@@ -1,28 +1,59 @@
-import time
-import math
 import datetime
 import requests
 import pandas as pd
 import swisseph as swe
-import matplotlib
 import streamlit as st
+import matplotlib
 from matplotlib.figure import Figure
 import mplfinance as mpf
 
-
-# ----- SWISSEPH FIX -----
-try:
-    import swisseph as swe
-except:
-    import pyswisseph as swe
-# -------------------------
-
 matplotlib.use("Agg")
 
-st.set_page_config(page_title="Planetary Aspects & Stock Scanner — Web", layout="wide")
+#--------------------------------------------------
+# CONFIG
+#--------------------------------------------------
+st.set_page_config(
+    page_title="Planet 🪐 Aspect Scanner",
+    page_icon="✨",
+    layout="wide",
+)
 
-GITHUB_DIR_API = "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
+THEMES = {
+    "Royal Blue": {"bg": "#0E1A2B", "fg": "white", "accent": "#00FFFF"},
+    "Sunset Orange": {"bg": "#2E1414", "fg": "white", "accent": "#FF8243"},
+    "Emerald Green": {"bg": "#062A20", "fg": "white", "accent": "#00C896"},
+    "Dark Mode": {"bg": "#000000", "fg": "#A0A0A0", "accent": "#4F8CFB"},
+}
 
+theme = st.sidebar.selectbox("Theme", list(THEMES.keys()))
+color = THEMES[theme]
+
+st.markdown(
+    f"""
+    <style>
+    body {{
+        background-color: {color['bg']};
+        color:{color['fg']};
+        font-family: 'Segoe UI', sans-serif;
+    }}
+    .stButton button {{
+        background:{color['accent']};
+        color:black;
+        border-radius:6px;
+        font-size:18px;
+        padding:6px 20px;
+    }}
+    h1,h2,h3 {{
+        color:{color['accent']};
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+#--------------------------------------------------
+# ASTRO constants
+#--------------------------------------------------
 swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
 
 NAK_DEG = 13 + 1/3
@@ -32,142 +63,183 @@ ZODIACS = [
 ]
 
 PLANETS = {
-    "Sun": swe.SUN, "Moon": swe.MOON, "Mercury": swe.MERCURY,
-    "Venus": swe.VENUS, "Mars": swe.MARS, "Jupiter": swe.JUPITER,
+    "Sun": swe.SUN, "Moon": swe.MOON,
+    "Mercury": swe.MERCURY, "Venus": swe.VENUS,
+    "Mars": swe.MARS, "Jupiter": swe.JUPITER,
     "Saturn": swe.SATURN, "Rahu": swe.TRUE_NODE
 }
 
 ASPECTS = {
     "Opposition": {
-        "Aries": "Libra","Taurus":"Scorpio","Gemini":"Sagittarius","Cancer":"Capricorn",
+        "Aries":"Libra","Taurus":"Scorpio","Gemini":"Sagittarius","Cancer":"Capricorn",
         "Leo":"Aquarius","Virgo":"Pisces","Libra":"Aries","Scorpio":"Taurus",
         "Sagittarius":"Gemini","Capricorn":"Cancer","Aquarius":"Leo","Pisces":"Virgo"
     },
-    "Conjunction": {z:z for z in ZODIACS}
+    "Conjunction": {z:z for z in ZODIACS},
+    "Square":{
+        "Aries":"Cancer","Taurus":"Leo","Gemini":"Virgo","Cancer":"Libra",
+        "Leo":"Scorpio","Virgo":"Sagittarius","Libra":"Capricorn","Scorpio":"Aquarius",
+        "Sagittarius":"Pisces","Capricorn":"Aries","Aquarius":"Taurus","Pisces":"Gemini"
+    }
 }
 
+# GitHub Data repository
+GITHUB_DIR = "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
+
+
+#--------------------------------------------------
+# ORIGINAL EXACT TKINTER LOGIC
+#--------------------------------------------------
 def get_sidereal_lon(jd, code):
     res = swe.calc_ut(jd, code)
     lon = res[0][0]
-    speed = res[0][3]
-    ayan = swe.get_ayanamsa_ut(jd)
-    return (lon - ayan) % 360, speed
+    sp = res[0][3]
+    ay = swe.get_ayanamsa_ut(jd)
+    return (lon - ay) % 360, sp
 
-def get_zodiac(x):
-    return ZODIACS[int(x//30)%12]
+
+def get_zodiac_name(slon):
+    return ZODIACS[int(slon // 30)]
+
+
+def find_aspect_dates(p1, p2, asp, years_back=10, years_fwd=5):
+    today = datetime.datetime.now()
+    jd0 = swe.julday(today.year, today.month, today.day)
+
+    code1, code2 = PLANETS[p1], PLANETS[p2]
+    amap = ASPECTS[asp]
+
+    past = []
+    future = []
+
+    for off in range(-365 * years_back, 365 * years_fwd):
+        jd = jd0 + off
+
+        lon1, _ = get_sidereal_lon(jd, code1)
+        lon2, _ = get_sidereal_lon(jd, code2)
+
+        if amap.get(get_zodiac_name(lon1)) == get_zodiac_name(lon2):
+            y, m, d, _ = swe.revjul(jd)
+            ds = f"{d:02d}-{m:02d}-{y}"
+
+            if off < 0:
+                past.append(ds)
+            else:
+                future.append(ds)
+
+    def uniq_start(lst):
+        out = []
+        prev = None
+        for d in lst:
+            if prev is None or (datetime.datetime.strptime(d, "%d-%m-%Y") -
+                                datetime.datetime.strptime(prev, "%d-%m-%Y")).days != 1:
+                out.append(d)
+            prev = d
+        return out
+
+    return uniq_start(past)[-20:], uniq_start(future)[:5]
+
 
 def load_parquet_from_github(url):
     return pd.read_parquet(url, engine="pyarrow")
 
-def analyze_symbol(df, aspect_dates):
-    results=[]
-    for ds in aspect_dates:
-        d=datetime.datetime.strptime(ds,"%d-%m-%Y").date()
-        mask=df.index.date==d
-        if not mask.any():continue
-        idx=df.index[mask][0]
-        cls=float(df.loc[idx,"close"])
-        pos=df.index.get_loc(idx)
-        w=df.iloc[pos+1:pos+11]
-        if w.empty: continue
-        pct_max=(w["close"].max()-cls)/cls*100
-        pct_min=(w["close"].min()-cls)/cls*100
-        results.append({
-            "aspect_date": ds,
-            "close":cls,
-            "max10":float(w["close"].max()),
-            "min10":float(w["close"].min()),
-            "pct_max":pct_max,
-            "pct_min":pct_min
-        })
-    return results
 
-if "aspect_dates" not in st.session_state:
-    st.session_state["aspect_dates"]=[]
-if "scan_results" not in st.session_state:
-    st.session_state["scan_results"]=pd.DataFrame()
+#--------------------------------------------------
+# UI START
+#--------------------------------------------------
+st.title("🪐 Planetary Aspect + Stock Scanner")
 
-st.title("Planetary Aspects & Stock Scanner — Web")
+tab1, tab2, tab3 = st.tabs(["♍ Aspect Finder", "📈 Stock Scanner", "🕯 Chart Viewer"])
 
-tabs = st.tabs(["Aspects","Scan","Charts"])
+#--------------------------------------------------
+# TAB 1
+#--------------------------------------------------
+with tab1:
+    c1, c2, c3 = st.columns(3)
 
-with tabs[0]:
+    with c1: p1 = st.selectbox("Planet 1", list(PLANETS))
+    with c2: asp = st.selectbox("Aspect", list(ASPECTS))
+    with c3: p2 = st.selectbox("Planet 2", list(PLANETS))
 
-    p1 = st.selectbox("Planet 1", list(PLANETS.keys()))
-    p2 = st.selectbox("Planet 2", list(PLANETS.keys()))
-    asp = st.selectbox("Aspect", list(ASPECTS.keys()))
-    years_back = st.number_input("Years Back",1,50,10)
-    years_fwd  = st.number_input("Years Forward",1,50,5)
+    if st.button("🔍 Find Dates"):
+        past, future = find_aspect_dates(p1, p2, asp)
+        st.success(f"Found {len(past)} past & {len(future)} future dates")
 
-    if st.button("Find Aspect Dates"):
+        st.subheader("Past Aspect Starts")
+        st.write(past)
 
-        today=datetime.datetime.now()
-        jd=swe.julday(today.year,today.month,today.day,today.hour+today.minute/60)
+        st.subheader("Next Aspect Starts")
+        st.write(future)
 
-        results=[]
-        for i in range(-365*years_back,365*years_fwd):
-            lon1,_=get_sidereal_lon(jd+i,PLANETS[p1])
-            lon2,_=get_sidereal_lon(jd+i,PLANETS[p2])
-            if ASPECTS[asp][get_zodiac(lon1)]==get_zodiac(lon2):
-                y,m,d,_ = swe.revjul(jd+i)
-                results.append(f"{d:02d}-{m:02d}-{y}")
+        st.session_state["aspect_list"] = past
 
-        st.session_state.aspect_dates = results
-        st.write(results)
 
-with tabs[1]:
-    if st.button("Run Scan"):
+#--------------------------------------------------
+# TAB 2 – SCANNER
+#--------------------------------------------------
+with tab2:
+    if "aspect_list" not in st.session_state:
+        st.warning("Compute aspects first")
+        st.stop()
 
-        if not st.session_state.aspect_dates:
-            st.warning("Compute aspects first!")
-            st.stop()
+    files = requests.get(GITHUB_DIR).json()
+    results = []
 
-        files = requests.get(GITHUB_DIR_API).json()
-        all_results=[]
+    with st.spinner("Scanning GitHub parquet..."):
 
-        with st.spinner("Downloading from GitHub..."):
-            for f in files:
-                if f["name"].endswith(".parquet"):
+        for f in files:
+            if not f["name"].endswith(".parquet"):
+                continue
 
-                    sym=f["name"].replace(".parquet","")
-                    url=f["download_url"]
+            sym = f["name"].replace(".parquet", "")
+            df = load_parquet_from_github(f["download_url"])
 
-                    df=load_parquet_from_github(url)
-                    if "datetime" in df:
-                        df=df.set_index(pd.to_datetime(df["datetime"]))
-                    df=df.sort_index()
+            df = df.set_index(pd.to_datetime(df["datetime"]))
+            for ds in st.session_state["aspect_list"]:
+                d = datetime.datetime.strptime(ds, "%d-%m-%Y").date()
 
-                    items=analyze_symbol(df,st.session_state.aspect_dates)
+                mask = df.index.date == d
+                if not mask.any(): continue
 
-                    for it in items:
-                        if it["pct_max"]>=10 or it["pct_min"]<=-10:
-                            all_results.append({
-                                "symbol":sym,
-                                **it
-                            })
+                idx = df.index[mask][0]
+                close = float(df.loc[idx, "close"])
+                window = df.iloc[df.index.get_loc(idx)+1: df.index.get_loc(idx)+11]
 
-        st.session_state.scan_results=pd.DataFrame(all_results)
+                if window.empty: continue
 
-    st.dataframe(st.session_state.scan_results)
+                pct = ((window["close"].max() - close) / close) * 100
 
-with tabs[2]:
-    df = st.session_state.scan_results
-    if df.empty:
-        st.info("Run scan first.")
-    else:
-        symbol=st.selectbox("Symbol",sorted(df.symbol.unique()))
-        date = st.selectbox("Aspect Date", df[df.symbol==symbol]["aspect_date"].unique())
+                if pct >= 10:
+                    results.append({"symbol": sym, "date": ds, "gain%": round(pct, 2)})
 
-        files=requests.get(GITHUB_DIR_API).json()
-        url=[f["download_url"] for f in files if f["name"]==symbol+".parquet"][0]
-        ddf=load_parquet_from_github(url)
-        ddf=ddf.set_index(pd.to_datetime(ddf["datetime"]))
+    out = pd.DataFrame(results)
+    st.dataframe(out, use_container_width=True)
+    st.session_state["scanner"] = out
 
-        start=datetime.datetime.strptime(date,"%d-%m-%Y").date()-datetime.timedelta(days=20)
-        end  =start+datetime.timedelta(days=40)
-        w=ddf[(ddf.index.date>=start)&(ddf.index.date<=end)]
 
-        fig=Figure(figsize=(8,3))
-        ax=fig.add_subplot(111)
-        mpf.plot(w[["open","high","low","close"]], type="candle", ax=ax)
-        st.pyplot(fig)
+#--------------------------------------------------
+# TAB 3 – CANDLES
+#--------------------------------------------------
+with tab3:
+    if "scanner" not in st.session_state or st.session_state["scanner"].empty:
+        st.info("Run scan first")
+        st.stop()
+
+    df = st.session_state["scanner"]
+    sym = st.selectbox("Symbol", sorted(df["symbol"].unique()))
+    dt = st.selectbox("Aspect Date", df[df.symbol == sym]["date"].unique())
+
+    files = requests.get(GITHUB_DIR).json()
+    url = [f["download_url"] for f in files if f["name"] == sym + ".parquet"][0]
+
+    ddf = load_parquet_from_github(url)
+    ddf = ddf.set_index(pd.to_datetime(ddf["datetime"]))
+
+    d1 = datetime.datetime.strptime(dt, "%d-%m-%Y").date()
+    w = ddf[(ddf.index.date >= d1 - datetime.timedelta(30)) &
+            (ddf.index.date <= d1 + datetime.timedelta(30))]
+
+    fig = Figure(figsize=(10, 3))
+    ax = fig.add_subplot(111)
+    mpf.plot(w[["open", "high", "low", "close"]], ax=ax, type="candle", style="charles")
+    st.pyplot(fig)
