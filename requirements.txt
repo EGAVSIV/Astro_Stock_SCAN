@@ -1,10 +1,9 @@
-streamlit
+swisseph
+pyswisseph
 pandas
-swisseph
 numpy
-swisseph
-pytz
-mplfinance
-matplotlib
 pyarrow
 requests
+matplotlib
+mplfinance
+streamlit
