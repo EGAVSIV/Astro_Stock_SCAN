@@ -3,10 +3,12 @@ import math
 import datetime
 import requests
 import pandas as pd
+import swisseph as swe
 import matplotlib
 import streamlit as st
 from matplotlib.figure import Figure
 import mplfinance as mpf
+
 
 # ----- SWISSEPH FIX -----
 try:
