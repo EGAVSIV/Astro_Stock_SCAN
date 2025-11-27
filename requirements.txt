@@ -1,5 +1,4 @@
 swisseph
-pyswisseph
 pandas
 numpy
 pyarrow
