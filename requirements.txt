@@ -1,8 +1,8 @@
+streamlit
 swisseph
 pandas
-numpy
 pyarrow
 requests
 matplotlib
 mplfinance
-streamlit
+numpy
