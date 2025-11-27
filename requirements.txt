@@ -1,8 +1,10 @@
 streamlit
 pandas
+swisseph
 numpy
 swisseph
 pytz
 mplfinance
 matplotlib
 pyarrow
+requests
