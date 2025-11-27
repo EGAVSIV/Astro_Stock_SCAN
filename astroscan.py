@@ -3,26 +3,26 @@ import math
 import datetime
 import requests
 import pandas as pd
-import swisseph as swe
 import matplotlib
 import streamlit as st
 from matplotlib.figure import Figure
 import mplfinance as mpf
 
+# ----- SWISSEPH FIX -----
+try:
+    import swisseph as swe
+except:
+    import pyswisseph as swe
+# -------------------------
+
 matplotlib.use("Agg")
 
-# ---------------------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------------------
 st.set_page_config(page_title="Planetary Aspects & Stock Scanner — Web", layout="wide")
 
-# GitHub data source
 GITHUB_DIR_API = "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
 
-# swisseph
 swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
 
-# Astrology constants
 NAK_DEG = 13 + 1/3
 ZODIACS = [
     "Aries","Taurus","Gemini","Cancer","Leo","Virgo",
@@ -44,9 +44,6 @@ ASPECTS = {
     "Conjunction": {z:z for z in ZODIACS}
 }
 
-# ---------------------------------------------------------------------
-# HELPER FUNCS
-# ---------------------------------------------------------------------
 def get_sidereal_lon(jd, code):
     res = swe.calc_ut(jd, code)
     lon = res[0][0]
@@ -83,24 +80,15 @@ def analyze_symbol(df, aspect_dates):
         })
     return results
 
-# ---------------------------------------------------------------------
-# STATE INIT
-# ---------------------------------------------------------------------
 if "aspect_dates" not in st.session_state:
     st.session_state["aspect_dates"]=[]
 if "scan_results" not in st.session_state:
     st.session_state["scan_results"]=pd.DataFrame()
 
-# ---------------------------------------------------------------------
-# UI
-# ---------------------------------------------------------------------
 st.title("Planetary Aspects & Stock Scanner — Web")
 
 tabs = st.tabs(["Aspects","Scan","Charts"])
 
-# ---------------------------------------------------------------------
-# TAB 1 – Aspects
-# ---------------------------------------------------------------------
 with tabs[0]:
 
     p1 = st.selectbox("Planet 1", list(PLANETS.keys()))
@@ -125,9 +113,6 @@ with tabs[0]:
         st.session_state.aspect_dates = results
         st.write(results)
 
-# ---------------------------------------------------------------------
-# TAB 2 – SCAN
-# ---------------------------------------------------------------------
 with tabs[1]:
     if st.button("Run Scan"):
 
@@ -163,9 +148,6 @@ with tabs[1]:
 
     st.dataframe(st.session_state.scan_results)
 
-# ---------------------------------------------------------------------
-# TAB 3 – Charts
-# ---------------------------------------------------------------------
 with tabs[2]:
     df = st.session_state.scan_results
     if df.empty:
@@ -174,7 +156,6 @@ with tabs[2]:
         symbol=st.selectbox("Symbol",sorted(df.symbol.unique()))
         date = st.selectbox("Aspect Date", df[df.symbol==symbol]["aspect_date"].unique())
 
-        # load data again
         files=requests.get(GITHUB_DIR_API).json()
         url=[f["download_url"] for f in files if f["name"]==symbol+".parquet"][0]
         ddf=load_parquet_from_github(url)
