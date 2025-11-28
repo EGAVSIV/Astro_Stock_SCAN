@@ -31,7 +31,7 @@ st.set_page_config(
 THEMES = {
     "Royal Blue": {"bg": "#0E1A2B", "fg": "#FFFFFF", "accent": "#00FFFF"},
     "Sunset Orange": {"bg": "#2E1414", "fg": "#FFFFFF", "accent": "#FF8243"},
-    "Emerald Green": {"bg": "#062A20", "fg": "#FFFFFF", "accent": "#00C"Emerald Green": {"bg": "#062A20", "fg": "#FFFFFF", "accent": "#00C896"},
+    "Emerald Green": {"bg": "#062A20", "fg": "#FFFFFF", "accent": "#00C896"},
     "Dark Mode": {"bg": "#000000", "fg": "#C0C0C0", "accent": "#4F8CFB"},
 }
 
