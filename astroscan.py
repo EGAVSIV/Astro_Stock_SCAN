@@ -1,6 +1,4 @@
 import datetime
-import time
-import math
 from typing import List, Tuple
 
 import requests
@@ -11,13 +9,10 @@ import matplotlib
 from matplotlib.figure import Figure
 import mplfinance as mpf
 
-# ---------------------------------------------------------------------
-# MATPLOTLIB BACKEND
-# ---------------------------------------------------------------------
 matplotlib.use("Agg")
 
 # ---------------------------------------------------------------------
-# STREAMLIT PAGE CONFIG
+# STREAMLIT CONFIG
 # ---------------------------------------------------------------------
 st.set_page_config(
     page_title="Planetary Aspects & Stock Scanner — Web",
@@ -44,11 +39,10 @@ st.markdown(
     body {{
         background-color: {theme['bg']};
         color: {theme['fg']};
-        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+        font-family: "Segoe UI", system-ui;
     }}
     .stApp {{
         background-color: {theme['bg']};
-        color: {theme['fg']};
     }}
     .stButton>button {{
         background: {theme['accent']} !important;
@@ -56,13 +50,8 @@ st.markdown(
         border-radius: 8px !important;
         border: none !important;
         font-weight: 600 !important;
-        padding: 0.4rem 1.3rem !important;
     }}
-    .stTabs [data-baseweb="tab-list"] button {{
-        font-weight: 600;
-        font-size: 0.95rem;
-    }}
-    h1, h2, h3, h4 {{
+    h1, h2, h3 {{
         color: {theme['accent']};
     }}
     </style>
@@ -71,15 +60,13 @@ st.markdown(
 )
 
 # ---------------------------------------------------------------------
-# ASTRO CONFIG / CONSTANTS
+# ASTRO CONSTANTS
 # ---------------------------------------------------------------------
 swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
 
-NAK_DEG = 13 + 1/3
-
 ZODIACS = [
-    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
-    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+    "Aries","Taurus","Gemini","Cancer","Leo","Virgo",
+    "Libra","Scorpio","Sagittarius","Capricorn","Aquarius","Pisces"
 ]
 
 PLANETS = {
@@ -95,133 +82,222 @@ PLANETS = {
 
 ASPECTS = {
     "Opposition": {
-        "Aries": "Libra", "Taurus": "Scorpio", "Gemini": "Sagittarius",
-        "Cancer": "Capricorn", "Leo": "Aquarius", "Virgo": "Pisces",
-        "Libra": "Aries", "Scorpio": "Taurus", "Sagittarius": "Gemini",
-        "Capricorn": "Cancer", "Aquarius": "Leo", "Pisces": "Virgo",
+        "Aries":"Libra","Taurus":"Scorpio","Gemini":"Sagittarius",
+        "Cancer":"Capricorn","Leo":"Aquarius","Virgo":"Pisces",
+        "Libra":"Aries","Scorpio":"Taurus","Sagittarius":"Gemini",
+        "Capricorn":"Cancer","Aquarius":"Leo","Pisces":"Virgo",
     },
     "Conjunction": {z: z for z in ZODIACS},
     "Square": {
-        "Aries": "Cancer", "Taurus": "Leo", "Gemini": "Virgo",
-        "Cancer": "Libra", "Leo": "Scorpio", "Virgo": "Sagittarius",
-        "Libra": "Capricorn", "Scorpio": "Aquarius", "Sagittarius": "Pisces",
-        "Capricorn": "Aries", "Aquarius": "Taurus", "Pisces": "Gemini",
+        "Aries":"Cancer","Taurus":"Leo","Gemini":"Virgo",
+        "Cancer":"Libra","Leo":"Scorpio","Virgo":"Sagittarius",
+        "Libra":"Capricorn","Scorpio":"Aquarius","Sagittarius":"Pisces",
+        "Capricorn":"Aries","Aquarius":"Taurus","Pisces":"Gemini",
     },
     "Trine": {
-        "Aries": "Leo", "Taurus": "Virgo", "Gemini": "Libra",
-        "Cancer": "Scorpio", "Leo": "Sagittarius", "Virgo": "Capricorn",
-        "Libra": "Aquarius", "Scorpio": "Pisces", "Sagittarius": "Aries",
-        "Capricorn": "Taurus", "Aquarius": "Gemini", "Pisces": "Cancer",
+        "Aries":"Leo","Taurus":"Virgo","Gemini":"Libra",
+        "Cancer":"Scorpio","Leo":"Sagittarius","Virgo":"Capricorn",
+        "Libra":"Aquarius","Scorpio":"Pisces","Sagittarius":"Aries",
+        "Capricorn":"Taurus","Aquarius":"Gemini","Pisces":"Cancer",
     },
     "Sextile": {
-        "Aries": "Gemini", "Taurus": "Cancer", "Gemini": "Leo",
-        "Cancer": "Virgo", "Leo": "Libra", "Virgo": "Scorpio",
-        "Libra": "Sagittarius", "Scorpio": "Capricorn",
-        "Sagittarius": "Aquarius", "Capricorn": "Pisces",
-        "Aquarius": "Aries", "Pisces": "Taurus",
+        "Aries":"Gemini","Taurus":"Cancer","Gemini":"Leo",
+        "Cancer":"Virgo","Leo":"Libra","Virgo":"Scorpio",
+        "Libra":"Sagittarius","Scorpio":"Capricorn",
+        "Sagittarius":"Aquarius","Capricorn":"Pisces",
+        "Aquarius":"Aries","Pisces":"Taurus",
     },
 }
 
-# GitHub data folder
+# GitHub parquet files
 GITHUB_DIR_API = "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
 
-# ---------------------------------------------------------------------
-# ORIGINAL TKINTER LOGIC (ported)
-# ---------------------------------------------------------------------
-def get_sidereal_lon_from_jd(jd: float, planet_code: int):
-    """Return sidereal longitude + speed (Lahiri)."""
-    res = swe.calc_ut(jd, planet_code)
 
-    if isinstance(res, tuple) and isinstance(res[0], (list, tuple)):
-        lon = res[0][0]
-        speed = res[0][3]
-    elif isinstance(res, (list, tuple)):
-        lon = res[0]
-        speed = res[3] if len(res) > 3 else 0.0
-    else:
-        lon = float(res[0])
-        speed = float(res[3]) if len(res) > 3 else 0.0
-
+# ---------------------------------------------------------------------
+# ASTRO FUNCTIONS
+# ---------------------------------------------------------------------
+def get_sidereal_lon(jd, planet):
+    res = swe.calc_ut(jd, planet)
+    lon = float(res[0])
     ayan = swe.get_ayanamsa_ut(jd)
-    sid_lon = (lon - ayan) % 360
-    return sid_lon, speed
+    return (lon - ayan) % 360
 
 
-def get_zodiac_name(sid_lon: float) -> str:
-    sign_index = int(sid_lon // 30) % 12
-    return ZODIACS[sign_index]
+def get_zodiac(lon):
+    return ZODIACS[int(lon // 30)]
 
 
-def find_aspect_dates(
-    planet1: str,
-    planet2: str,
-    aspect_name: str,
-    years_back: int = 10,
-    years_forward: int = 5,
-    limit_past: int = 20,
-    limit_future: int = 5,
-) -> Tuple[List[str], List[str]]:
-
+def find_aspect_dates(p1, p2, asp, years_back=10, years_forward=5):
     today = datetime.datetime.now()
-    jd_today = swe.julday(
-        today.year, today.month, today.day,
-        today.hour + today.minute / 60.0
-    )
+    jd_today = swe.julday(today.year, today.month, today.day)
 
-    p1 = PLANETS[planet1]
-    p2 = PLANETS[planet2]
-    aspect_map = ASPECTS[aspect_name]
+    asp_map = ASPECTS[asp]
+    r_past, r_future = [], []
 
-    results_past = []
-    results_future = []
-
-    start_offset = -365 * years_back
-    end_offset = 365 * years_forward
-
-    for offset in range(start_offset, end_offset + 1):
+    for offset in range(-365*years_back, 365*years_forward):
         jd = jd_today + offset
-        lon1, _ = get_sidereal_lon_from_jd(jd, p1)
-        lon2, _ = get_sidereal_lon_from_jd(jd, p2)
-        z1 = get_zodiac_name(lon1)
-        z2 = get_zodiac_name(lon2)
+        z1 = get_zodiac(get_sidereal_lon(jd, PLANETS[p1]))
+        z2 = get_zodiac(get_sidereal_lon(jd, PLANETS[p2]))
 
-        if aspect_map.get(z1) == z2:
-            y, m, d, hr = swe.revjul(jd)
-            date_str = f"{d:02d}-{m:02d}-{y}"
+        if asp_map.get(z1)==z2:
+            y,m,d,hr = swe.revjul(jd)
+            ds = f"{d:02d}-{m:02d}-{y}"
 
-            if offset < 0:
-                results_past.append(date_str)
-            else:
-                results_future.append(date_str)
+            if offset < 0: r_past.append(ds)
+            else: r_future.append(ds)
 
-
-    def unique_first_past(entries, keep):
-        out = []
-        prev = None
-        for e in entries:
+    def filter_runs(lst):
+        f=[]
+        prev=None
+        for d in lst:
             if prev is None or (
-                datetime.datetime.strptime(e, "%d-%m-%Y")
-                - datetime.datetime.strptime(prev, "%d-%m-%Y")
-            ).days != 1:
-                out.append(e)
-            prev = e
-        return out[-keep:][::-1]
+                datetime.datetime.strptime(d,"%d-%m-%Y") -
+                datetime.datetime.strptime(prev,"%d-%m-%Y")
+            ).days!=1:
+                f.append(d)
+            prev=d
+        return f
+
+    return filter_runs(r_past)[-20:][::-1], filter_runs(r_future)[:5]
 
 
-    def unique_first_future(entries, keep):
-        out = []
-        prev = None
-        for e in entries:
-            if prev is None or (
-                datetime.datetime.strptime(e, "%d-%m-%Y")
-                - datetime.datetime.strptime(prev, "%d-%m-%Y")
-            ).days != 1:
-                out.append(e)
-            prev = e
-        return out[:keep]
+# ---------------------------------------------------------------------
+# STOCK HANDLING
+# ---------------------------------------------------------------------
+def load_parquet(url):
+    df = pd.read_parquet(url, engine="pyarrow")
+    if "datetime" in df.columns:
+        df.index=pd.to_datetime(df["datetime"])
+    else:
+        df.index=pd.to_datetime(df.index)
+    return df.sort_index()
 
 
-    return (
-        unique_first_past(results_past, limit_past),
-        unique_first_future(results_future, limit_future)
-    )
+def analyze(df, dates):
+    out=[]
+    for ds in dates:
+        d=datetime.datetime.strptime(ds,"%d-%m-%Y").date()
+        mask=df.index.date==d
+        if not mask.any():continue
+        idx=df.index[mask][0]
+        close=df.loc[idx,"close"]
+        win=df.iloc[df.index.get_loc(idx)+1:df.index.get_loc(idx)+11]
+
+        if win.empty:continue
+
+        mx=win["close"].max()
+        mn=win["close"].min()
+        out.append({
+            "aspect_date":ds,
+            "close":close,
+            "pct_max":(mx-close)/close*100,
+            "pct_min":(mn-close)/close*100,
+        })
+    return out
+
+
+# STREAMLIT UI
+# ===========================================================
+if "aspect_dates" not in st.session_state:
+    st.session_state["aspect_dates"]=[]
+
+if "results" not in st.session_state:
+    st.session_state["results"]=pd.DataFrame()
+
+st.title("🪐 Planetary Aspects & Stock Scanner")
+
+tabs=st.tabs(["♍ Aspects","📊 Stocks","📈 Charts"])
+
+# TAB 1 -------------------------------------------------------
+with tabs[0]:
+    c1,c2,c3,c4=st.columns(4)
+    p1=c1.selectbox("Planet 1",PLANETS)
+    p2=c2.selectbox("Planet 2",PLANETS)
+    asp=c3.selectbox("Aspect",ASPECTS)
+    yb=c4.number_input("Years back",1,20,10)
+    yf=c4.number_input("Years forward",1,20,5)
+
+    if st.button("Find Aspect Start Dates"):
+        past,future=find_aspect_dates(p1,p2,asp,yb,yf)
+        st.session_state["aspect_dates"]=past
+        st.success(f"Found {len(past)} past aspect start dates")
+        st.write(past)
+
+# TAB 2 --------------------------------------------------------
+with tabs[1]:
+    dates=st.session_state["aspect_dates"]
+
+    if not dates:
+        st.warning("Run aspects first")
+    else:
+        if st.button("Run Stock Scan"):
+            files=requests.get(GITHUB_DIR_API).json()
+            rec=[]
+            for f in files:
+                if not f["name"].endswith(".parquet"):continue
+                url=f["download_url"]
+                sym=f["name"].replace(".parquet","")
+                try:
+                    df=load_parquet(url)
+                except:continue
+
+                for r in analyze(df,dates):
+                    if r["pct_max"]>=10 or r["pct_min"]<=-10:
+                        rec.append({
+                            "symbol":sym,
+                            **r,
+                            "Move":"GAIN" if r["pct_max"]>=10 else "LOSS"
+                        })
+
+            df=pd.DataFrame(rec)
+            if not df.empty:
+                df["Count"]=df.groupby("symbol")["symbol"].transform("count")
+
+            st.session_state["results"]=df
+
+        df=st.session_state["results"]
+
+        if df.empty:
+            st.info("No results yet")
+        else:
+            gain=df[df["Move"]=="GAIN"].shape[0]
+            loss=df[df["Move"]=="LOSS"].shape[0]
+
+            st.success(f"Total Records: {len(df)}")
+            st.success(f"Profit: {gain} | Loss: {loss}")
+
+            st.dataframe(df,use_container_width=True)
+
+            st.download_button(
+                "Download CSV",
+                df.to_csv(index=False),
+                file_name="aspect_scan.csv"
+            )
+
+# TAB 3 CHART --------------------------------------------------
+with tabs[2]:
+    df=st.session_state["results"]
+    if df.empty:
+        st.info("No results yet")
+    else:
+        symbols=sorted(df["symbol"].unique())
+        s=st.selectbox("Symbol",symbols)
+        ad=st.selectbox("Aspect Date",df[df["symbol"]==s]["aspect_date"])
+
+        files=requests.get(GITHUB_DIR_API).json()
+        url=[f["download_url"] for f in files if f["name"]==f"{s}.parquet"][0]
+        df2=load_parquet(url)
+
+        d=datetime.datetime.strptime(ad,"%d-%m-%Y").date()
+        w=df2[(df2.index.date>=d-datetime.timedelta(days=30)) &
+              (df2.index.date<=d+datetime.timedelta(days=40))]
+
+        fig=Figure(figsize=(10,4))
+        ax=fig.add_subplot(111)
+        mpf.plot(
+            w[["open","high","low","close"]],
+            type="candle",ax=ax,style="charles"
+        )
+        ax.axvline(w[w.index.date==d].index[0],color="orange")
+
+        st.pyplot(fig)
