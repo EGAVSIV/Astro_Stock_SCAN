@@ -118,9 +118,18 @@ GITHUB_DIR_API = "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_P
 # ---------------------------------------------------------------------
 def get_sidereal_lon(jd, planet):
     res = swe.calc_ut(jd, planet)
-    lon = float(res[0])
+
+    if isinstance(res, (tuple, list)):
+        if isinstance(res[0], (tuple, list)):
+            lon = float(res[0][0])
+        else:
+            lon = float(res[0])
+    else:
+        lon = float(res)
+
     ayan = swe.get_ayanamsa_ut(jd)
     return (lon - ayan) % 360
+
 
 
 def get_zodiac(lon):
