@@ -376,6 +376,8 @@ with tabs[0]:
 # ---------------------------------------------------------------------
 # TAB 2 — STOCKS SCAN
 # ---------------------------------------------------------------------
+# TAB 2 — STOCKS SCAN
+# ---------------------------------------------------------------------
 with tabs[1]:
     st.subheader("Scan Stocks Around Aspect Start Dates")
 
@@ -427,16 +429,12 @@ with tabs[1]:
 
             df_res = pd.DataFrame(results)
 
-            # ⭐ ADD SUMMARY COLUMNS
+            # ⭐ ADD SUMMARY COLUMNS safely
             if not df_res.empty:
-                # Count total times appeared
                 df_res["Count"] = df_res.groupby("symbol")["symbol"].transform("count")
-
-                # Win / Loss flags
                 df_res["Win"] = (df_res["pct_max"] >= 10).astype(int)
                 df_res["Loss"] = (df_res["pct_min"] <= -10).astype(int)
 
-                # Grouped results
                 summary = df_res.groupby("symbol").agg(
                     Count=("symbol", "count"),
                     Wins=("Win", "sum"),
@@ -446,23 +444,30 @@ with tabs[1]:
                 summary["Win%"] = (summary["Wins"] / summary["Count"] * 100).round(2)
                 summary["Loss%"] = (summary["Loss"] / summary["Count"] * 100).round(2)
 
-                # merge summary back to the main DF
                 df_res = df_res.merge(summary, on="symbol", how="left")
 
             st.session_state["scan_results"] = df_res
             st.success(f"Scan complete. {len(df_res)} qualifying records found.")
 
         st.markdown("### Scan Results")
-
         df_res = st.session_state["scan_results"]
 
         if df_res.empty:
             st.info("No results yet. Run a scan to populate data.")
         else:
 
+            # ⭐ Prevent crash if Count does not exist
+            if "Count" not in df_res.columns:
+                st.warning("No qualifying stocks found for ±10% movement.")
+                st.stop()
+
             # ⭐ MULTIPLE HIT FILTER
             min_hits = st.slider("Show stocks repeating at least N times", 1, 10, 1)
             df_filtered = df_res[df_res["Count"] >= min_hits]
+
+            if df_filtered.empty:
+                st.warning("No stocks meet the hit count criteria.")
+                st.stop()
 
             st.dataframe(df_filtered, use_container_width=True)
 
@@ -475,13 +480,16 @@ with tabs[1]:
                 "text/csv"
             )
 
-            # ⭐ Summary stats section
+            # ⭐ Summary stats
             st.subheader("Summary Insights")
-            st.write(df_filtered[["symbol","Count","Wins","Loss","Win%","Loss%"]]
-                     .drop_duplicates()
-                     .sort_values(by="Win%", ascending=False))
+            st.write(
+                df_filtered[["symbol","Count","Wins","Loss","Win%","Loss%"]]
+                .drop_duplicates()
+                .sort_values(by="Win%", ascending=False)
+            )
 
             st.success(f"Stocks meeting criteria: {df_filtered['symbol'].nunique()}")
+
 
 # ---------------------------------------------------------------------
 # TAB 3 — CHARTS
