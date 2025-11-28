@@ -1,154 +1,3 @@
-import datetime
-import time
-import math
-from typing import List, Tuple
-import requests
-import pandas as pd
-import swisseph as swe
-import streamlit as st
-import matplotlib
-from matplotlib.figure import Figure
-import mplfinance as mpf
-
-# ---------------------------------------------------------------------
-# MATPLOTLIB BACKEND
-# ---------------------------------------------------------------------
-matplotlib.use("Agg")
-
-# ---------------------------------------------------------------------
-# STREAMLIT PAGE CONFIG
-# ---------------------------------------------------------------------
-st.set_page_config(
-    page_title="Planetary Aspects & Stock Scanner — Web",
-    page_icon="🪐",
-    layout="wide",
-)
-
-# ---------------------------------------------------------------------
-# THEMES
-# ---------------------------------------------------------------------
-THEMES = {
-    "Royal Blue": {"bg": "#0E1A2B", "fg": "#FFFFFF", "accent": "#00FFFF"},
-    "Sunset Orange": {"bg": "#2E1414", "fg": "#FFFFFF", "accent": "#FF8243"},
-    "Emerald Green": {"bg": "#062A20", "fg": "#FFFFFF", "accent": "#00C896"},
-    "Dark Mode": {"bg": "#000000", "fg": "#C0C0C0", "accent": "#4F8CFB"},
-}
-
-theme_name = st.sidebar.selectbox("Theme", list(THEMES.keys()))
-theme = THEMES[theme_name]
-
-st.markdown(
-    f"""
-    <style>
-    body {{
-        background-color: {theme['bg']};
-        color: {theme['fg']};
-        font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont,
-        sans-serif;
-    }}
-    .stApp {{
-        background-color: {theme['bg']};
-        color: {theme['fg']};
-    }}
-    .stButton>button {{
-        background: {theme['accent']} !important;
-        color: black !important;
-        border-radius: 8px !important;
-        border: none !important;
-        font-weight: 600 !important;
-        padding: 0.4rem 1.3rem !important;
-    }}
-    .stTabs [data-baseweb="tab-list"] button {{
-        font-weight: 600;
-        font-size: 0.95rem;
-    }}
-    h1, h2, h3, h4 {{
-        color: {theme['accent']};
-    }}
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-
-# ---------------------------------------------------------------------
-# ASTRO CONFIG / CONSTANTS
-# ---------------------------------------------------------------------
-swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
-NAK_DEG = 13 + 1 / 3
-
-ZODIACS = [
-    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
-    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
-]
-
-PLANETS = {
-    "Sun": swe.SUN,
-    "Moon": swe.MOON,
-    "Mercury": swe.MERCURY,
-    "Venus": swe.VENUS,
-    "Mars": swe.MARS,
-    "Jupiter": swe.JUPITER,
-    "Saturn": swe.SATURN,
-    "Rahu": swe.TRUE_NODE,
-}
-
-ASPECTS = {
-    "Opposition": {
-        "Aries": "Libra", "Taurus": "Scorpio", "Gemini": "Sagittarius",
-        "Cancer": "Capricorn", "Leo": "Aquarius", "Virgo": "Pisces",
-        "Libra": "Aries", "Scorpio": "Taurus", "Sagittarius": "Gemini",
-        "Capricorn": "Cancer", "Aquarius": "Leo", "Pisces": "Virgo",
-    },
-    "Conjunction": {z: z for z in ZODIACS},
-    "Square": {
-        "Aries": "Cancer", "Taurus": "Leo", "Gemini": "Virgo",
-        "Cancer": "Libra", "Leo": "Scorpio", "Virgo": "Sagittarius",
-        "Libra": "Capricorn", "Scorpio": "Aquarius", "Sagittarius": "Pisces",
-        "Capricorn": "Aries", "Aquarius": "Taurus", "Pisces": "Gemini",
-    },
-    "Trine": {
-        "Aries": "Leo", "Taurus": "Virgo", "Gemini": "Libra",
-        "Cancer": "Scorpio", "Leo": "Sagittarius", "Virgo": "Capricorn",
-        "Libra": "Aquarius", "Scorpio": "Pisces", "Sagittarius": "Aries",
-        "Capricorn": "Taurus", "Aquarius": "Gemini", "Pisces": "Cancer",
-    },
-    "Sextile": {
-        "Aries": "Gemini", "Taurus": "Cancer", "Gemini": "Leo",
-        "Cancer": "Virgo", "Leo": "Libra", "Virgo": "Scorpio",
-        "Libra": "Sagittarius", "Scorpio": "Capricorn",
-        "Sagittarius": "Aquarius", "Capricorn": "Pisces",
-        "Aquarius": "Aries", "Pisces": "Taurus",
-    },
-}
-
-# GitHub data folder
-GITHUB_DIR_API = \
-    "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
-
-# ---------------------------------------------------------------------
-# ORIGINAL TKINTER LOGIC (ported)
-# ---------------------------------------------------------------------
-def get_sidereal_lon_from_jd(jd: float, planet_code: int):
-    """Return sidereal longitude + speed (Lahiri)."""
-    res = swe.calc_ut(jd, planet_code)
-    if isinstance(res, tuple) and isinstance(res[0], (list, tuple)):
-        lon = res[0][0]
-        speed = res[0][3]
-    elif isinstance(res, (list, tuple)):
-        lon = res[0]
-        speed = res[3] if len(res) > 3 else 0.0
-    else:
-        lon = float(res[0])
-        speed = float(res[3]) if len(res) > 3 else 0.0
-
-    ayan = swe.get_ayanamsa_ut(jd)
-    sid_lon = (lon - ayan) % 360
-    return sid_lon, speed
-
-def get_zodiac_name(sid_lon: float) -> str:
-    return ZODIACS[int(sid_lon // 30) % 12]
-
-# -------------------- continues --------------------
 def find_aspect_dates(
     planet1: str,
     planet2: str,
@@ -373,23 +222,23 @@ with tabs[0]:
             st.info("No future aspect dates computed yet.")
 
 # ---------------------------------------------------------------------
-# ---------------------------------------------------------------------
-# TAB 2 — STOCKS SCAN
-# ---------------------------------------------------------------------
 # TAB 2 — STOCKS SCAN
 # ---------------------------------------------------------------------
 with tabs[1]:
     st.subheader("Scan Stocks Around Aspect Start Dates")
 
     aspect_dates = st.session_state["aspect_dates_past"]
+
     if not aspect_dates:
         st.warning("No aspect dates available. Go to the Aspects tab and compute first.")
+
     else:
         st.caption(f"Using {len(aspect_dates)} past aspect start dates.")
 
         if st.button("🚀 Run Stock Scan"):
             files = requests.get(GITHUB_DIR_API).json()
             results = []
+
             total_files = len([f for f in files if f["name"].endswith(".parquet")])
 
             with st.spinner("Scanning stocks from GitHub parquet files..."):
@@ -411,67 +260,44 @@ with tabs[1]:
                     for it in items:
                         if (it["pct_max"] >= 10.0) or (it["pct_min"] <= -10.0):
                             aspect_type = f"{planet1} {aspect_name} {planet2}"
-                            move_category = "😆 >10% Gain" if it["pct_max"] >= 10 else "😩 >10% Fall"
-
-                            results.append(
-                                {
-                                    "symbol": sym,
-                                    "aspect_date": it["aspect_date"],
-                                    "close": it["close"],
-                                    "max10": it["max10"],
-                                    "min10": it["min10"],
-                                    "pct_max": round(it["pct_max"], 2),
-                                    "pct_min": round(it["pct_min"], 2),
-                                    "Aspect": aspect_type,
-                                    "Move Category": move_category,
-                                }
+                            move_category = (
+                                "😆 >10% Gain" if it["pct_max"] >= 10
+                                else "😩 >10% Fall"
                             )
+
+                            results.append({
+                                "symbol": sym,
+                                "aspect_date": it["aspect_date"],
+                                "close": it["close"],
+                                "max10": it["max10"],
+                                "min10": it["min10"],
+                                "pct_max": round(it["pct_max"], 2),
+                                "pct_min": round(it["pct_min"], 2),
+                                "Aspect": aspect_type,
+                                "Move Category": move_category,
+                            })
 
             df_res = pd.DataFrame(results)
 
-            # ⭐ ADD SUMMARY COLUMNS safely
             if not df_res.empty:
                 df_res["Count"] = df_res.groupby("symbol")["symbol"].transform("count")
-                df_res["Win"] = (df_res["pct_max"] >= 10).astype(int)
-                df_res["Loss"] = (df_res["pct_min"] <= -10).astype(int)
-
-                summary = df_res.groupby("symbol").agg(
-                    Count=("symbol", "count"),
-                    Wins=("Win", "sum"),
-                    Loss=("Loss", "sum"),
-                ).reset_index()
-
-                summary["Win%"] = (summary["Wins"] / summary["Count"] * 100).round(2)
-                summary["Loss%"] = (summary["Loss"] / summary["Count"] * 100).round(2)
-
-                df_res = df_res.merge(summary, on="symbol", how="left")
 
             st.session_state["scan_results"] = df_res
+
             st.success(f"Scan complete. {len(df_res)} qualifying records found.")
 
         st.markdown("### Scan Results")
+
         df_res = st.session_state["scan_results"]
 
         if df_res.empty:
             st.info("No results yet. Run a scan to populate data.")
         else:
-
-            # ⭐ Prevent crash if Count does not exist
-            if "Count" not in df_res.columns:
-                st.warning("No qualifying stocks found for ±10% movement.")
-                st.stop()
-
-            # ⭐ MULTIPLE HIT FILTER
             min_hits = st.slider("Show stocks repeating at least N times", 1, 10, 1)
             df_filtered = df_res[df_res["Count"] >= min_hits]
 
-            if df_filtered.empty:
-                st.warning("No stocks meet the hit count criteria.")
-                st.stop()
-
             st.dataframe(df_filtered, use_container_width=True)
 
-            # ⭐ CSV DOWNLOAD button
             csv = df_filtered.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "📥 Download Filtered CSV",
@@ -480,16 +306,7 @@ with tabs[1]:
                 "text/csv"
             )
 
-            # ⭐ Summary stats
-            st.subheader("Summary Insights")
-            st.write(
-                df_filtered[["symbol","Count","Wins","Loss","Win%","Loss%"]]
-                .drop_duplicates()
-                .sort_values(by="Win%", ascending=False)
-            )
-
             st.success(f"Stocks meeting criteria: {df_filtered['symbol'].nunique()}")
-
 
 # ---------------------------------------------------------------------
 # TAB 3 — CHARTS
