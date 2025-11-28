@@ -31,7 +31,7 @@ st.set_page_config(
 THEMES = {
     "Royal Blue": {"bg": "#0E1A2B", "fg": "#FFFFFF", "accent": "#00FFFF"},
     "Sunset Orange": {"bg": "#2E1414", "fg": "#FFFFFF", "accent": "#FF8243"},
-    "Emerald Green": {"bg": "#062A20", "fg": "#FFFFFF", "accent": "#00C896"},
+    "Emerald Green": {"bg": "#062A20", "fg": "#FFFFFF", "accent": "#00C"Emerald Green": {"bg": "#062A20", "fg": "#FFFFFF", "accent": "#00C896"},
     "Dark Mode": {"bg": "#000000", "fg": "#C0C0C0", "accent": "#4F8CFB"},
 }
 
@@ -74,6 +74,8 @@ st.markdown(
 # ASTRO CONFIG / CONSTANTS
 # ---------------------------------------------------------------------
 swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
+
+NAK_DEG = 13 + 1/3
 
 ZODIACS = [
     "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
@@ -120,125 +122,106 @@ ASPECTS = {
     },
 }
 
+# GitHub data folder
 GITHUB_DIR_API = "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
 
-def load_github_df(url: str) -> pd.DataFrame:
-    df = pd.read_parquet(url, engine="pyarrow")
-    if "datetime" in df.columns:
-        df.index = pd.to_datetime(df["datetime"])
-    elif "date" in df.columns:
-        df.index = pd.to_datetime(df["date"])
-    df = df[df["timeframe"] == "D"]
-    return df.sort_index()
+# ---------------------------------------------------------------------
+# ORIGINAL TKINTER LOGIC (ported)
+# ---------------------------------------------------------------------
+def get_sidereal_lon_from_jd(jd: float, planet_code: int):
+    """Return sidereal longitude + speed (Lahiri)."""
+    res = swe.calc_ut(jd, planet_code)
 
-def analyze_symbol_for_aspect_dates(df: pd.DataFrame, dates: List[str]):
-    results = []
-    for d in dates:
-        d0 = datetime.datetime.strptime(d, "%d-%m-%Y").date()
-        mask = df.index.date == d0
-        if not mask.any(): continue
+    if isinstance(res, tuple) and isinstance(res[0], (list, tuple)):
+        lon = res[0][0]
+        speed = res[0][3]
+    elif isinstance(res, (list, tuple)):
+        lon = res[0]
+        speed = res[3] if len(res) > 3 else 0.0
+    else:
+        lon = float(res[0])
+        speed = float(res[3]) if len(res) > 3 else 0.0
 
-        idx = df.index[mask][0]
-        close = df.loc[idx, "close"]
-        win = df.loc[idx+1:idx+10]["close"]
+    ayan = swe.get_ayanamsa_ut(jd)
+    sid_lon = (lon - ayan) % 360
+    return sid_lon, speed
 
-        max10 = win.max()
-        min10 = win.min()
 
-        pct_max = ((max10-close)/close)*100
-        pct_min = ((min10-close)/close)*100
+def get_zodiac_name(sid_lon: float) -> str:
+    sign_index = int(sid_lon // 30) % 12
+    return ZODIACS[sign_index]
 
-        results.append({
-            "aspect_date":d,
-            "close":close,
-            "max10":max10,
-            "min10":min10,
-            "pct_max":pct_max,
-            "pct_min":pct_min
-        })
-    return results
 
-# ------------------------------------------------------------
-# SESSION STATE
-# ------------------------------------------------------------
-for k in ["aspect_dates_past","aspect_dates_future","scan_results"]:
-    if k not in st.session_state:
-        st.session_state[k]=[] if k!="scan_results" else pd.DataFrame()
+def find_aspect_dates(
+    planet1: str,
+    planet2: str,
+    aspect_name: str,
+    years_back: int = 10,
+    years_forward: int = 5,
+    limit_past: int = 20,
+    limit_future: int = 5,
+) -> Tuple[List[str], List[str]]:
 
-# ------------------------------------------------------------
-# MAIN UI
-# ------------------------------------------------------------
-st.title("🪐 Planetary Aspects & Stock Scanner — Web Dashboard")
+    today = datetime.datetime.now()
+    jd_today = swe.julday(
+        today.year, today.month, today.day,
+        today.hour + today.minute / 60.0
+    )
 
-tabs = st.tabs(["♍ Aspects", "📊 Stocks Scan", "🕯 Charts"])
+    p1 = PLANETS[planet1]
+    p2 = PLANETS[planet2]
+    aspect_map = ASPECTS[aspect_name]
 
-# ------------------------------------------------------------
-# TAB 1
-# ------------------------------------------------------------
-with tabs[0]:
-    st.subheader("Find Aspect Start Dates")
+    results_past = []
+    results_future = []
 
-    planet1 = st.selectbox("Planet 1",list(PLANETS.keys()))
-    planet2 = st.selectbox("Planet 2",list(PLANETS.keys()))
-    aspect_name = st.selectbox("Aspect",list(ASPECTS.keys()))
+    start_offset = -365 * years_back
+    end_offset = 365 * years_forward
 
-    if st.button("🔍 Find Aspect Dates"):
-        # same logic as you had
-        # I skip repeating code here for brevity
-        st.session_state["aspect_dates_past"]=["02-03-2024"]  # placeholder
-        st.session_state["aspect_dates_future"]=[]
+    for offset in range(start_offset, end_offset + 1):
+        jd = jd_today + offset
+        lon1, _ = get_sidereal_lon_from_jd(jd, p1)
+        lon2, _ = get_sidereal_lon_from_jd(jd, p2)
+        z1 = get_zodiac_name(lon1)
+        z2 = get_zodiac_name(lon2)
 
-with tabs[1]:
+        if aspect_map.get(z1) == z2:
+            y, m, d, hr = swe.revjul(jd)
+            date_str = f"{d:02d}-{m:02d}-{y}"
 
-    st.subheader("Scan Stocks")
+            if offset < 0:
+                results_past.append(date_str)
+            else:
+                results_future.append(date_str)
 
-    dates = st.session_state["aspect_dates_past"]
 
-    if st.button("🚀 Run Scan"):
-        files=requests.get(GITHUB_DIR_API).json()
-        results=[]
-        for f in files:
-            if not f["name"].endswith(".parquet"):continue
-            sym=f["name"].replace(".parquet","")
-            df=load_github_df(f["download_url"])
-            items=analyze_symbol_for_aspect_dates(df,dates)
-            for it in items:
-                if it["pct_max"]>=10 or it["pct_min"]<=-10:
-                    results.append({
-                        "symbol":sym,
-                        **it
-                    })
+    def unique_first_past(entries, keep):
+        out = []
+        prev = None
+        for e in entries:
+            if prev is None or (
+                datetime.datetime.strptime(e, "%d-%m-%Y")
+                - datetime.datetime.strptime(prev, "%d-%m-%Y")
+            ).days != 1:
+                out.append(e)
+            prev = e
+        return out[-keep:][::-1]
 
-        df_res=pd.DataFrame(results)
 
-        if not df_res.empty:
-            df_res["Count"]=df_res.groupby("symbol")["symbol"].transform("count")
-            df_res["Win"]=(df_res["pct_max"]>=10).astype(int)
-            df_res["Loss"]=(df_res["pct_min"]<=-10).astype(int)
+    def unique_first_future(entries, keep):
+        out = []
+        prev = None
+        for e in entries:
+            if prev is None or (
+                datetime.datetime.strptime(e, "%d-%m-%Y")
+                - datetime.datetime.strptime(prev, "%d-%m-%Y")
+            ).days != 1:
+                out.append(e)
+            prev = e
+        return out[:keep]
 
-            summary=df_res.groupby("symbol").agg(
-                Count=("symbol","count"),
-                Wins=("Win","sum"),
-                Loss=("Loss","sum")
-            ).reset_index()
 
-            summary["Win%"]=(summary["Wins"]/summary["Count"]*100).round(2)
-            summary["Loss%"]=(summary["Loss"]/summary["Count"]*100).round(2)
-
-            df_res=df_res.merge(summary,on="symbol")
-
-        st.session_state["scan_results"]=df_res
-
-    df=st.session_state["scan_results"]
-
-    if not df.empty:
-        min_hits=st.slider("Min Repeat",1,10,1)
-        fdf=df[df["Count"]>=min_hits]
-
-        st.dataframe(fdf)
-
-        csv=fdf.to_csv(index=False).encode()
-        st.download_button("Download CSV",csv,"results.csv","text/csv")
-
-with tabs[2]:
-    st.write("Chart placeholder here")
+    return (
+        unique_first_past(results_past, limit_past),
+        unique_first_future(results_future, limit_future)
+    )
