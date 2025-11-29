@@ -324,9 +324,9 @@ if "scan_results" not in st.session_state:
 # ---------------------------------------------------------------------
 # MAIN UI
 # ---------------------------------------------------------------------
-st.title("🪐 Planetary Aspects Vs Stock_By GauravSinghYadav")
+st.title("🪐 Planetary Aspects Vs 💹Stock_By GauravSinghYadav")
 
-tabs = st.tabs(["♍ Aspects", "📊 Stocks Scan", "🕯 Charts"])
+tabs = st.tabs(["🌙x☀️Aspects", "📊 Stocks Scan", "📉 Charts"])
 
 # ---------------------------------------------------------------------
 # TAB 1 — ASPECTS
