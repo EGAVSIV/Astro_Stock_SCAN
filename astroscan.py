@@ -23,7 +23,7 @@ matplotlib.use("Agg")
 # ---------------------------------------------------------------------
 st.set_page_config(
     page_title="Planetary Aspects & Stock Scanner — Web",
-    page_icon="📊",
+    page_icon="📊🪐",
     layout="wide",
 )
 
