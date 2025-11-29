@@ -324,7 +324,7 @@ if "scan_results" not in st.session_state:
 # ---------------------------------------------------------------------
 # MAIN UI
 # ---------------------------------------------------------------------
-st.title("🪐 Planetary Aspects & Stock Scanner — Web Dashboard")
+st.title("🪐 Planetary Aspects Vs Stock_By GauravSinghYadav")
 
 tabs = st.tabs(["♍ Aspects", "📊 Stocks Scan", "🕯 Charts"])
 
