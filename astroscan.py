@@ -22,8 +22,8 @@ matplotlib.use("Agg")
 # STREAMLIT PAGE CONFIG
 # ---------------------------------------------------------------------
 st.set_page_config(
-    page_title="Planet Aspects & Stock Scanner_By_Gs_Yadav",
-    page_icon="📊",
+    page_title="-📊 Planet Aspects & Stock Scanner_By_Gs_Yadav",
+    page_icon="🪐",
     layout="wide",
 )
 
