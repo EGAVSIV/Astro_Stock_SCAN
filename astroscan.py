@@ -465,12 +465,24 @@ with tabs[1]:
         if df_res.empty:
             st.info("No results yet. Run a scan to populate data.")
         else:
-            min_hits = st.slider("Show stocks repeating at least N times", 1, 10, 1)
-            df_filtered = df_res[df_res["Count"] >= min_hits]
+            min_hits = st.slider(
+                "Show stocks with at least N qualifying events",
+                1, 20, 1
+            )
+            summary_filtered = summary[summary["Checked_Events"] >= min_hits]
+
+            symbols_allowed = summary_filtered["symbol"].unique()
+
+            df_filtered = df_res[df_res["symbol"].isin(symbols_allowed)]
+            
 
             
             st.markdown("### 📌 Stock Performance Summary (Decision Table)")
             st.dataframe(summary, use_container_width=True)
+
+            st.markdown("### 📋 Individual Aspect Events")
+            st.dataframe(df_filtered, use_container_width=True)
+
 
             st.dataframe(df_filtered, use_container_width=True)
 
