@@ -438,25 +438,29 @@ with tabs[1]:
                                 "direction": direction,
 
                             })
+                            df_res = pd.DataFrame(results)
+                            st.session_state["scan_results"] = df_res
 
-            if not df_res.empty:
-                summary = (
-                    df_res
-                    .groupby("symbol")
-                    .agg(
-                        Checked_Events=("symbol", "count"),
-                        Moves_Above_10pct=("direction", lambda x: (x == "UP").sum() + (x == "DOWN").sum()),
-                        Plus_10pct=("direction", lambda x: (x == "UP").sum()),
-                        Minus_10pct=("direction", lambda x: (x == "DOWN").sum()),
-                    )
-                    .reset_index()
-                )
-            else:
-                summary = pd.DataFrame()
+
 
         st.markdown("### Scan Results")
 
         df_res = st.session_state["scan_results"]
+        if not df_res.empty:
+            summary = (
+                df_res
+                .groupby("symbol")
+                .agg(
+                    Checked_Events=("symbol", "count"),
+                    Moves_Above_10pct=("direction", "count"),
+                    Plus_10pct=("direction", lambda x: (x == "UP").sum()),
+                    Minus_10pct=("direction", lambda x: (x == "DOWN").sum()),
+                )
+                .reset_index()
+            )
+        else:
+            summary = pd.DataFrame()
+
 
         if df_res.empty:
             st.info("No results yet. Run a scan to populate data.")
