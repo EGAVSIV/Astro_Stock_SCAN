@@ -265,12 +265,13 @@ def load_github_df(url: str) -> pd.DataFrame:
     return df.sort_index()
 
 
-def analyze_symbol_for_aspect_dates(df: pd.DataFrame, aspect_dates: List[str]):
-    """ Exact port of Tkinter logic:
-    - For each aspect date, find that candle's close, then next 10 trading candles:
-      pct_max, pct_min, max10, min10.
-    """
+def analyze_symbol_for_aspect_dates(
+    df: pd.DataFrame,
+    aspect_dates: List[str],
+    lookahead_days: int = 5   # <<< NEW
+):
     results = []
+
     for ds in aspect_dates:
         try:
             d = datetime.datetime.strptime(ds, "%d-%m-%Y").date()
@@ -283,25 +284,26 @@ def analyze_symbol_for_aspect_dates(df: pd.DataFrame, aspect_dates: List[str]):
 
         idx = df.index[mask][0]
         close_on_date = float(df.loc[idx, "close"])
+
         idx_pos = df.index.get_loc(idx)
         start_pos = idx_pos + 1
-        end_pos = start_pos + 10
+        end_pos = start_pos + lookahead_days   # <<< CHANGED
 
         window = df.iloc[start_pos:end_pos]
         if window.empty:
             continue
 
-        max_next10 = float(window["close"].max())
-        min_next10 = float(window["close"].min())
+        max_next = float(window["close"].max())
+        min_next = float(window["close"].min())
 
-        pct_max = ((max_next10 - close_on_date) / close_on_date) * 100.0
-        pct_min = ((min_next10 - close_on_date) / close_on_date) * 100.0
+        pct_max = ((max_next - close_on_date) / close_on_date) * 100
+        pct_min = ((min_next - close_on_date) / close_on_date) * 100
 
         results.append({
             "aspect_date": ds,
             "close": close_on_date,
-            "max10": max_next10,
-            "min10": min_next10,
+            "max_n": max_next,
+            "min_n": min_next,
             "pct_max": pct_max,
             "pct_min": pct_min,
         })
@@ -412,36 +414,45 @@ with tabs[1]:
                     except Exception:
                         continue
 
-                    items = analyze_symbol_for_aspect_dates(df, aspect_dates)
+                    items = analyze_symbol_for_aspect_dates(df, aspect_dates, lookahead_days=5)
+
 
                     for it in items:
                         if (it["pct_max"] >= 10.0) or (it["pct_min"] <= -10.0):
                             aspect_type = f"{planet1} {aspect_name} {planet2}"
-                            move_category = (
-                                "😆 >10% Gain" if it["pct_max"] >= 10
-                                else "😩 >10% Fall"
-                            )
+                            if it["pct_max"] >= 10:
+                                direction = "UP"
+                            elif it["pct_min"] <= -10:
+                                direction = "DOWN"
+                            else:
+                                continue
+                            
+                            
 
                             results.append({
                                 "symbol": sym,
                                 "aspect_date": it["aspect_date"],
                                 "close": it["close"],
-                                "max10": it["max10"],
-                                "min10": it["min10"],
                                 "pct_max": round(it["pct_max"], 2),
                                 "pct_min": round(it["pct_min"], 2),
-                                "Aspect": aspect_type,
-                                "Move Category": move_category,
+                                "direction": direction,
+
                             })
 
-            df_res = pd.DataFrame(results)
-
             if not df_res.empty:
-                df_res["Count"] = df_res.groupby("symbol")["symbol"].transform("count")
-
-            st.session_state["scan_results"] = df_res
-
-            st.success(f"Scan complete. {len(df_res)} qualifying records found.")
+                summary = (
+                    df_res
+                    .groupby("symbol")
+                    .agg(
+                        Checked_Events=("symbol", "count"),
+                        Moves_Above_10pct=("direction", lambda x: (x == "UP").sum() + (x == "DOWN").sum()),
+                        Plus_10pct=("direction", lambda x: (x == "UP").sum()),
+                        Minus_10pct=("direction", lambda x: (x == "DOWN").sum()),
+                    )
+                    .reset_index()
+                )
+            else:
+                summary = pd.DataFrame()
 
         st.markdown("### Scan Results")
 
@@ -452,6 +463,10 @@ with tabs[1]:
         else:
             min_hits = st.slider("Show stocks repeating at least N times", 1, 10, 1)
             df_filtered = df_res[df_res["Count"] >= min_hits]
+
+            
+            st.markdown("### 📌 Stock Performance Summary (Decision Table)")
+            st.dataframe(summary, use_container_width=True)
 
             st.dataframe(df_filtered, use_container_width=True)
 
