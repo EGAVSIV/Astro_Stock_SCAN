@@ -1,241 +1,157 @@
 # ============================================================
-# 📊 Cycle Intelligence Scanner (FINAL SPEC)
+# 📊 AUTO CYCLE IDENTIFIER (HISTORICAL)
 # ============================================================
 
-import datetime
 import requests
 import pandas as pd
 import streamlit as st
+import numpy as np
 
 # ============================================================
 # CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="📊 Cycle Intelligence Scanner",
+    page_title="📊 Auto Cycle Identifier",
     layout="wide"
 )
 
-st.title("📊 Cycle Intelligence Scanner")
-st.caption("Bar-Based | Manual & Predefined Cycles | Auto Analyzer")
+st.title("📊 Auto Cycle Identifier (Historical Data)")
+st.caption("Automatically discovers dominant stock cycles using bar-based analysis")
 
 GITHUB_DIR_API = (
     "https://api.github.com/repos/EGAVSIV/"
     "Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
 )
 
-CYCLES = [21, 42, 63, 84, 105, 126, 147]
-
 # ============================================================
-# LOAD DATA
+# DATA LOADER (ROBUST)
 # ============================================================
-def load_df(url: str) -> pd.DataFrame:
-    df = pd.read_parquet(url, engine="pyarrow")
+def load_df(url):
+    df = pd.read_parquet(url)
 
-    # 1️⃣ If index is already datetime → use it
     if isinstance(df.index, pd.DatetimeIndex):
         df.index = pd.to_datetime(df.index)
-
     else:
-        # 2️⃣ Try to find datetime-like column
-        datetime_cols = [
-            c for c in df.columns
-            if c.lower() in ("date", "datetime", "time", "timestamp")
-        ]
+        for c in df.columns:
+            if c.lower() in ("date", "datetime", "timestamp"):
+                df.index = pd.to_datetime(df[c], errors="coerce")
+                break
 
-        if not datetime_cols:
-            raise ValueError("No datetime column found")
-
-        dt_col = datetime_cols[0]
-        df.index = pd.to_datetime(df[dt_col], errors="coerce")
-
-    # 3️⃣ Drop invalid rows
     df = df[~df.index.isna()]
+    df = df.sort_index()
 
-    # 4️⃣ Daily timeframe only (if exists)
-    if "timeframe" in df.columns:
-        df = df[df["timeframe"] == "D"]
+    if "close" not in df.columns:
+        raise ValueError("No close price")
 
-    # 5️⃣ Ensure OHLC exists
-    required = {"open", "high", "low", "close"}
-    if not required.issubset(df.columns):
-        raise ValueError("Missing OHLC columns")
-
-    return df.sort_index()
-
-
-def next_trading_bar(df, date):
-    idx = df.index[df.index.date >= date]
-    return idx[0] if len(idx) else None
+    return df
 
 # ============================================================
-# CORE CALC
+# CYCLE DETECTION ENGINE
 # ============================================================
-def calc_move(df, start_date, bars):
-    sidx = next_trading_bar(df, start_date)
-    if sidx is None:
-        return None
+def detect_cycles(df, symbol, min_cycle=10, max_cycle=150, threshold=7.0):
+    closes = df["close"].values
+    dates = df.index
 
-    spos = df.index.get_loc(sidx)
-    epos = spos + bars
-    if epos >= len(df):
-        return None
+    results = []
 
-    eidx = df.index[epos]
-    sc = df.loc[sidx, "close"]
-    ec = df.loc[eidx, "close"]
+    for cycle in range(min_cycle, max_cycle + 1, 5):
+        moves = []
+        ranges = []
 
-    pct = ((ec - sc) / sc) * 100
-    return sidx.date(), eidx.date(), round(pct, 2)
+        for i in range(len(closes) - cycle):
+            start = closes[i]
+            end = closes[i + cycle]
+            pct = ((end - start) / start) * 100
 
-# ============================================================
-# MODE SELECTION
-# ============================================================
-mode = st.radio(
-    "Select Scan Mode",
-    ["Manual Cycle Based", "Predefined Cycle Based", "Auto Cycle Analyzer"]
-)
+            if abs(pct) >= threshold:
+                moves.append(pct)
+                ranges.append((dates[i].date(), dates[i + cycle].date()))
 
-threshold = st.slider(
-    "Threshold % (Single Value)",
-    -30.0, 30.0, 10.0, step=0.5
-)
+        if len(moves) >= 5:  # meaningful repetition
+            results.append({
+                "Symbol": symbol,
+                "Cycle_Bars": cycle,
+                "Occurrences": len(moves),
+                "Avg_%Move": round(np.mean(moves), 2),
+                "First_Cycle": f"{ranges[0][0]} → {ranges[0][1]}",
+                "Last_Cycle": f"{ranges[-1][0]} → {ranges[-1][1]}"
+            })
 
-results = []
-
-# ============================================================
-# MANUAL MODE
-# ============================================================
-if mode == "Manual Cycle Based":
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date")
-    with col2:
-        end_date = st.date_input("End Date")
-
-    if st.button("Run Manual Scan"):
-        files = requests.get(GITHUB_DIR_API).json()
-
-        for f in files:
-            if not f["name"].endswith(".parquet"):
-                continue
-
-            sym = f["name"].replace(".parquet", "")
-            df = load_df(f["download_url"])
-
-            sidx = next_trading_bar(df, start_date)
-            eidx = next_trading_bar(df, end_date)
-            if not sidx or not eidx:
-                continue
-
-            sc = df.loc[sidx, "close"]
-            ec = df.loc[eidx, "close"]
-            pct = ((ec - sc) / sc) * 100
-
-            if (threshold >= 0 and pct >= threshold) or \
-               (threshold < 0 and pct <= threshold):
-
-                results.append({
-                    "Symbol": sym,
-                    "Start": sidx.date(),
-                    "End": eidx.date(),
-                    "%Move": round(pct, 2),
-                    "Bars": df.index.get_loc(eidx) - df.index.get_loc(sidx)
-                })
+    return results
 
 # ============================================================
-# PREDEFINED CYCLE MODE
+# UI CONTROLS
 # ============================================================
-elif mode == "Predefined Cycle Based":
-    col1, col2 = st.columns(2)
-    with col1:
-        start_date = st.date_input("Start Date")
-    with col2:
-        cycle = st.selectbox("Cycle (Bars)", CYCLES)
+col1, col2 = st.columns(2)
 
-    if st.button("Run Cycle Scan"):
-        files = requests.get(GITHUB_DIR_API).json()
-
-        for f in files:
-            if not f["name"].endswith(".parquet"):
-                continue
-
-            sym = f["name"].replace(".parquet", "")
-            df = load_df(f["download_url"])
-
-            res = calc_move(df, start_date, cycle)
-            if not res:
-                continue
-
-            sdt, edt, pct = res
-            if (threshold >= 0 and pct >= threshold) or \
-               (threshold < 0 and pct <= threshold):
-
-                results.append({
-                    "Symbol": sym,
-                    "Cycle": cycle,
-                    "Start": sdt,
-                    "End": edt,
-                    "%Move": pct
-                })
-
-# ============================================================
-# AUTO CYCLE ANALYZER
-# ============================================================
-else:
-    today = datetime.date.today()
-    future_dates = [
-        today + datetime.timedelta(days=i)
-        for i in range(30)
-    ]
-
-    if st.button("Run Auto Analyzer (Next 1 Month)"):
-        files = requests.get(GITHUB_DIR_API).json()
-        occ = []
-
-        for f in files:
-            if not f["name"].endswith(".parquet"):
-                continue
-
-            sym = f["name"].replace(".parquet", "")
-            df = load_df(f["download_url"])
-
-            for d in future_dates:
-                for c in CYCLES:
-                    res = calc_move(df, d, c)
-                    if not res:
-                        continue
-
-                    _, _, pct = res
-                    if abs(pct) >= abs(threshold):
-                        occ.append(sym)
-
-        summary = (
-            pd.Series(occ)
-            .value_counts()
-            .reset_index()
-            .rename(columns={"index": "Symbol", 0: "Occurrences"})
-        )
-
-        st.subheader("🔥 High Priority Stocks (Next Month Cycles)")
-        st.dataframe(summary)
-
-# ============================================================
-# DISPLAY RESULTS
-# ============================================================
-if results:
-    df = pd.DataFrame(results)
-    st.subheader("📋 Scan Results")
-    st.dataframe(df)
-
-    summary = (
-        df.groupby("Symbol")
-        .size()
-        .reset_index(name="Occurrences")
-        .sort_values("Occurrences", ascending=False)
+with col1:
+    threshold = st.slider(
+        "Significant Move Threshold (%)",
+        3.0, 20.0, 7.0, step=0.5
     )
 
-    st.subheader("⭐ Best Stocks by Occurrence")
-    st.dataframe(summary)
-else:
-    if mode != "Auto Cycle Analyzer":
-        st.info("No stocks matched criteria.")
+with col2:
+    max_cycle = st.slider(
+        "Max Cycle Length (Bars)",
+        50, 200, 150, step=10
+    )
+
+# ============================================================
+# RUN ANALYSIS
+# ============================================================
+if st.button("🚀 Run Auto Cycle Detection"):
+    files = requests.get(GITHUB_DIR_API).json()
+    all_cycles = []
+
+    with st.spinner("Analyzing historical cycles..."):
+        for f in files:
+            if not f["name"].endswith(".parquet"):
+                continue
+
+            symbol = f["name"].replace(".parquet", "")
+            try:
+                df = load_df(f["download_url"])
+                cycles = detect_cycles(
+                    df,
+                    symbol,
+                    min_cycle=10,
+                    max_cycle=max_cycle,
+                    threshold=threshold
+                )
+                all_cycles.extend(cycles)
+            except Exception:
+                continue
+
+    if all_cycles:
+        result_df = pd.DataFrame(all_cycles)
+
+        st.success(f"✅ {result_df['Symbol'].nunique()} stocks cycle identified")
+
+        st.subheader("📌 Identified Stock Cycles")
+        st.dataframe(
+            result_df.sort_values(
+                ["Occurrences", "Avg_%Move"],
+                ascending=False
+            ),
+            use_container_width=True
+        )
+
+        csv = result_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            "📥 Download Cycle Data",
+            csv,
+            "auto_cycle_identified.csv",
+            "text/csv"
+        )
+    else:
+        st.warning("No dominant cycles found with current parameters.")
+
+# ============================================================
+# FOOTER
+# ============================================================
+st.markdown("""
+---
+**Auto Cycle Discovery Engine**  
+Bar-based | Data-driven | No assumptions  
+Built for serious market cycle research 📈
+""")
