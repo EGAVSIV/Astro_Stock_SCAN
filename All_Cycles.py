@@ -93,7 +93,7 @@ with col1:
 with col2:
     max_cycle = st.slider(
         "Max Cycle Length (Bars)",
-        50, 200, 150, step=10
+        10,50, 200, 150, step=10
     )
 
 # ============================================================
