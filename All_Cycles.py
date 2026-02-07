@@ -1,6 +1,5 @@
 # ============================================================
-# 📊 Cycle Based Stock Scanner (Parquet | No Astrology)
-# Designed by: Gaurav Singh Yadav
+# 📊 Advanced Cycle Based Stock Scanner (Bar-Based)
 # ============================================================
 
 import datetime
@@ -17,13 +16,13 @@ matplotlib.use("Agg")
 # STREAMLIT CONFIG
 # ============================================================
 st.set_page_config(
-    page_title="📊 Cycle Based Stock Scanner",
+    page_title="📊 Advanced Cycle Scanner",
     page_icon="📈",
     layout="wide",
 )
 
-st.title("📊 Cycle Based Stock Scanner (Pure Price & Time)")
-st.caption("Exact N-th Bar Cycle Analysis | Parquet Data | Threshold Based")
+st.title("📊 Advanced Cycle Based Stock Scanner")
+st.caption("Bar-Based | Threshold | Historical Cycle Scan | Parquet")
 
 # ============================================================
 # GITHUB PARQUET DIRECTORY
@@ -59,44 +58,66 @@ def load_github_df(url: str) -> pd.DataFrame:
     return df.sort_index()
 
 # ============================================================
-# CORE CYCLE ANALYSIS
+# FIND NEAREST NEXT TRADING DAY
 # ============================================================
-def analyze_symbol_for_cycles(
+def get_next_trading_index(df, date):
+    dates = df.index[df.index.date >= date]
+    if dates.empty:
+        return None
+    return dates[0]
+
+# ============================================================
+# CORE ANALYSIS FUNCTION
+# ============================================================
+def analyze_cycles(
     df: pd.DataFrame,
     symbol: str,
     start_date: datetime.date,
-    cycles: list,
-    threshold: float
+    cycle: int,
+    threshold_pos: float,
+    threshold_neg: float,
+    years_back: int,
 ):
     results = []
 
-    if start_date not in df.index.date:
-        return results
+    for y in range(years_back + 1):
+        shifted_date = datetime.date(
+            start_date.year - y,
+            start_date.month,
+            start_date.day
+        )
 
-    start_idx = df.index[df.index.date == start_date][0]
-    start_pos = df.index.get_loc(start_idx)
-    start_close = float(df.loc[start_idx, "close"])
+        start_idx = get_next_trading_index(df, shifted_date)
+        if start_idx is None:
+            continue
 
-    for c in cycles:
-        target_pos = start_pos + c
+        start_pos = df.index.get_loc(start_idx)
+        target_pos = start_pos + cycle
+
         if target_pos >= len(df):
             continue
 
-        target_idx = df.index[target_pos]
-        target_close = float(df.iloc[target_pos]["close"])
+        end_idx = df.index[target_pos]
 
-        pct_change = ((target_close - start_close) / start_close) * 100
+        start_close = float(df.loc[start_idx, "close"])
+        end_close = float(df.loc[end_idx, "close"])
 
-        if pct_change >= threshold or pct_change <= -threshold:
+        pct = ((end_close - start_close) / start_close) * 100
+
+        if (
+            (threshold_pos is not None and pct >= threshold_pos)
+            or (threshold_neg is not None and pct <= -threshold_neg)
+        ):
             results.append({
                 "symbol": symbol,
-                "cycle_days": c,
-                "start_date": start_date,
-                "end_date": target_idx.date(),
+                "base_year": shifted_date.year,
+                "cycle_days": cycle,
+                "start_date": start_idx.date(),
+                "end_date": end_idx.date(),
                 "start_close": round(start_close, 2),
-                "end_close": round(target_close, 2),
-                "pct_change": round(pct_change, 2),
-                "direction": "UP" if pct_change > 0 else "DOWN",
+                "end_close": round(end_close, 2),
+                "pct_change": round(pct, 2),
+                "direction": "UP" if pct > 0 else "DOWN",
             })
 
     return results
@@ -110,28 +131,38 @@ if "scan_results" not in st.session_state:
 # ============================================================
 # UI CONTROLS
 # ============================================================
-st.subheader("⚙️ Scan Settings")
+st.subheader("⚙️ Scan Configuration")
 
-col1, col2, col3 = st.columns(3)
+col1, col2, col3, col4 = st.columns(4)
 
 with col1:
     start_date = st.date_input("📅 Start Date")
 
 with col2:
-    threshold = st.slider(
-        "📏 Threshold % Move",
-        min_value=2.0,
-        max_value=20.0,
+    cycle = st.selectbox(
+        "🔁 Select Cycle (Bars)",
+        [21, 42, 63, 84, 105, 126, 147]
+    )
+
+with col3:
+    threshold_pos = st.number_input(
+        "📈 Positive Threshold %",
+        min_value=0.0,
+        max_value=30.0,
         value=6.0,
         step=0.5
     )
 
-with col3:
-    cycles = st.multiselect(
-        "🔁 Cycle Days",
-        [21, 42, 63, 84, 105, 126, 147],
-        default=[21, 42, 63]
+with col4:
+    threshold_neg = st.number_input(
+        "📉 Negative Threshold %",
+        min_value=0.0,
+        max_value=30.0,
+        value=6.0,
+        step=0.5
     )
+
+years_back = st.slider("⏪ Years to Scan Back", 1, 10, 5)
 
 # ============================================================
 # RUN SCAN
@@ -140,7 +171,7 @@ if st.button("🚀 Run Cycle Scan"):
     files = requests.get(GITHUB_DIR_API).json()
     all_results = []
 
-    with st.spinner("Scanning Parquet files..."):
+    with st.spinner("Scanning stocks (bar-based logic)..."):
         for f in files:
             if not f["name"].endswith(".parquet"):
                 continue
@@ -153,12 +184,14 @@ if st.button("🚀 Run Cycle Scan"):
             except Exception:
                 continue
 
-            res = analyze_symbol_for_cycles(
+            res = analyze_cycles(
                 df=df,
                 symbol=symbol,
                 start_date=start_date,
-                cycles=cycles,
-                threshold=threshold
+                cycle=cycle,
+                threshold_pos=threshold_pos,
+                threshold_neg=threshold_neg,
+                years_back=years_back
             )
 
             all_results.extend(res)
@@ -171,9 +204,9 @@ if st.button("🚀 Run Cycle Scan"):
 df_res = st.session_state["scan_results"]
 
 if df_res.empty:
-    st.info("No scan results yet.")
+    st.info("No results found.")
 else:
-    st.subheader("📌 Summary (Occurrence Based)")
+    st.subheader("📌 Summary")
 
     summary = (
         df_res
@@ -182,7 +215,7 @@ else:
             Occurrences=("symbol", "count"),
             Avg_Move=("pct_change", "mean"),
             Max_Gain=("pct_change", "max"),
-            Max_Loss=("pct_change", "min")
+            Max_Loss=("pct_change", "min"),
         )
         .reset_index()
     )
@@ -192,11 +225,11 @@ else:
 
     st.dataframe(summary, use_container_width=True)
 
-    st.subheader("📋 Detailed Cycle Events")
-    df_filtered = df_res[df_res["symbol"].isin(summary["symbol"])]
-    st.dataframe(df_filtered, use_container_width=True)
+    st.subheader("📋 Detailed Events")
+    filtered = df_res[df_res["symbol"].isin(summary["symbol"])]
+    st.dataframe(filtered, use_container_width=True)
 
-    csv = df_filtered.to_csv(index=False).encode("utf-8")
+    csv = filtered.to_csv(index=False).encode("utf-8")
     st.download_button(
         "📥 Download CSV",
         csv,
@@ -205,67 +238,44 @@ else:
     )
 
 # ============================================================
-# CHART SECTION
+# CHART
 # ============================================================
 st.markdown("---")
 st.subheader("📈 Cycle Event Chart")
 
-if not df_res.empty:
-    symbols = sorted(df_filtered["symbol"].unique())
+if not filtered.empty:
+    sym = st.selectbox("Symbol", filtered["symbol"].unique())
+    row = filtered[filtered["symbol"] == sym].iloc[0]
 
-    col1, col2 = st.columns(2)
+    files = requests.get(GITHUB_DIR_API).json()
+    url = next(
+        f["download_url"]
+        for f in files
+        if f["name"] == f"{sym}.parquet"
+    )
 
-    with col1:
-        sel_symbol = st.selectbox("Symbol", symbols)
+    df = load_github_df(url)
 
-    with col2:
-        sel_row = df_filtered[df_filtered["symbol"] == sel_symbol]
-        sel_event = st.selectbox(
-            "Cycle Event",
-            sel_row.index,
-            format_func=lambda x: (
-                f"{sel_row.loc[x,'start_date']} → "
-                f"{sel_row.loc[x,'cycle_days']} Days"
-            )
-        )
+    dfw = df[
+        (df.index.date >= row["start_date"] - datetime.timedelta(days=30)) &
+        (df.index.date <= row["end_date"] + datetime.timedelta(days=30))
+    ]
 
-    if st.button("📊 Show Chart"):
-        row = sel_row.loc[sel_event]
-        files = requests.get(GITHUB_DIR_API).json()
+    fig = Figure(figsize=(10, 4))
+    ax = fig.add_subplot(111)
 
-        url = None
-        for f in files:
-            if f["name"] == f"{sel_symbol}.parquet":
-                url = f["download_url"]
-                break
+    mpf.plot(
+        dfw[["open", "high", "low", "close"]],
+        type="candle",
+        ax=ax,
+        style="charles",
+        show_nontrading=True
+    )
 
-        if url:
-            df = load_github_df(url)
+    ax.axvline(pd.Timestamp(row["start_date"]), color="blue", linestyle="--")
+    ax.axvline(pd.Timestamp(row["end_date"]), color="red", linestyle="--")
 
-            d0 = row["start_date"]
-            d1 = row["end_date"]
-
-            dfw = df[
-                (df.index.date >= d0 - datetime.timedelta(days=30)) &
-                (df.index.date <= d1 + datetime.timedelta(days=30))
-            ]
-
-            fig = Figure(figsize=(10, 4))
-            ax = fig.add_subplot(111)
-
-            mpf.plot(
-                dfw[["open", "high", "low", "close"]],
-                type="candle",
-                ax=ax,
-                style="charles",
-                show_nontrading=True
-            )
-
-            ax.axvline(pd.Timestamp(d0), color="blue", linestyle="--", label="Start")
-            ax.axvline(pd.Timestamp(d1), color="red", linestyle="--", label="Cycle End")
-            ax.legend()
-
-            st.pyplot(fig)
+    st.pyplot(fig)
 
 # ============================================================
 # FOOTER
@@ -274,6 +284,6 @@ st.markdown("""
 ---
 **Designed by:**  
 **Gaurav Singh Yadav**  
-Quant | Cycles | Price Action  
-Built with ❤️ using Python & Streamlit
+Quant | Cycles | Bar-Based Logic  
+Built with ❤️ in Python & Streamlit
 """)
