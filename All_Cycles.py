@@ -28,10 +28,40 @@ CYCLES = [21, 42, 63, 84, 105, 126, 147]
 # ============================================================
 # LOAD DATA
 # ============================================================
-def load_df(url):
-    df = pd.read_parquet(url)
-    df.index = pd.to_datetime(df.iloc[:, 0])
+def load_df(url: str) -> pd.DataFrame:
+    df = pd.read_parquet(url, engine="pyarrow")
+
+    # 1️⃣ If index is already datetime → use it
+    if isinstance(df.index, pd.DatetimeIndex):
+        df.index = pd.to_datetime(df.index)
+
+    else:
+        # 2️⃣ Try to find datetime-like column
+        datetime_cols = [
+            c for c in df.columns
+            if c.lower() in ("date", "datetime", "time", "timestamp")
+        ]
+
+        if not datetime_cols:
+            raise ValueError("No datetime column found")
+
+        dt_col = datetime_cols[0]
+        df.index = pd.to_datetime(df[dt_col], errors="coerce")
+
+    # 3️⃣ Drop invalid rows
+    df = df[~df.index.isna()]
+
+    # 4️⃣ Daily timeframe only (if exists)
+    if "timeframe" in df.columns:
+        df = df[df["timeframe"] == "D"]
+
+    # 5️⃣ Ensure OHLC exists
+    required = {"open", "high", "low", "close"}
+    if not required.issubset(df.columns):
+        raise ValueError("Missing OHLC columns")
+
     return df.sort_index()
+
 
 def next_trading_bar(df, date):
     idx = df.index[df.index.date >= date]
