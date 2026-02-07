@@ -1,5 +1,5 @@
 # ============================================================
-# 📊 ADVANCED AUTO CYCLE ENGINE (LONG + SHORT)
+# 📊 ADVANCED AUTO CYCLE + PRICE-TIME EQUALITY ENGINE
 # ============================================================
 
 import requests
@@ -9,11 +9,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ============================================================
-# PAGE CONFIG
+# CONFIG
 # ============================================================
-st.set_page_config("Advanced Cycle Engine", layout="wide")
-st.title("📊 Advanced Auto Cycle Engine")
-st.caption("Dominant Cycle | Heatmap | Forward Probability | Long & Short")
+st.set_page_config("Cycle + Price-Time Engine", layout="wide")
+st.title("📊 Advanced Cycle + Price–Time Equality Engine")
+st.caption("Dominant Cycle | Energy Build-up | Explosion Probability")
 
 GITHUB_DIR_API = (
     "https://api.github.com/repos/EGAVSIV/"
@@ -26,25 +26,12 @@ GITHUB_DIR_API = (
 @st.cache_data(show_spinner=False)
 def load_df(url):
     df = pd.read_parquet(url)
-
-    if isinstance(df.index, pd.DatetimeIndex):
-        df.index = pd.to_datetime(df.index)
-    else:
-        for c in df.columns:
-            if c.lower() in ("date", "datetime", "timestamp"):
-                df.index = pd.to_datetime(df[c], errors="coerce")
-                break
-
-    df = df[~df.index.isna()]
+    df.index = pd.to_datetime(df.index)
     df = df.sort_index()
-
-    if "close" not in df.columns:
-        raise ValueError("No close price column")
-
     return df
 
 # ============================================================
-# DOMINANT CYCLE DETECTION
+# DOMINANT CYCLE
 # ============================================================
 def dominant_cycle(df, symbol, threshold, max_cycle):
     closes = df["close"].values
@@ -68,7 +55,6 @@ def dominant_cycle(df, symbol, threshold, max_cycle):
             best = {
                 "Symbol": symbol,
                 "Cycle_Bars": cycle,
-                "Occurrences": len(moves),
                 "Avg_%Move": round(avg_move, 2),
                 "Bull_Prob": round((np.array(moves) > 0).mean() * 100, 1),
                 "Bear_Prob": round((np.array(moves) < 0).mean() * 100, 1),
@@ -78,181 +64,101 @@ def dominant_cycle(df, symbol, threshold, max_cycle):
     return best
 
 # ============================================================
-# UPCOMING CYCLE CALCULATION
+# PRICE–TIME EQUALITY + ENERGY BUILDUP
 # ============================================================
-def upcoming_cycle_info(df, row):
-    cycle = int(row["Cycle_Bars"])
+def price_time_equality(df, cycle, tolerance=0.015):
+    if len(df) < cycle + 5:
+        return False, "Normal", None
 
-    # Average bar duration
-    bar_delta = (df.index[-1] - df.index[-cycle-1]) / cycle
-    next_cycle_date = df.index[-1] + bar_delta * cycle
+    price_now = df["close"].iloc[-1]
+    price_then = df["close"].iloc[-cycle]
 
-    if row["Bull_Prob"] > row["Bear_Prob"]:
-        bias = "Bullish"
-        prob = row["Bull_Prob"]
-    elif row["Bear_Prob"] > row["Bull_Prob"]:
-        bias = "Bearish"
-        prob = row["Bear_Prob"]
-    else:
-        bias = "Neutral"
-        prob = 50
+    diff_pct = abs(price_now - price_then) / price_then
 
-    return next_cycle_date.date(), bias, prob
+    if diff_pct <= tolerance:
+        recent_vol = df["close"].pct_change().rolling(10).std().iloc[-1]
+        past_vol = df["close"].pct_change().rolling(30).std().iloc[-1]
+
+        if recent_vol < past_vol:
+            return True, "Compressed", diff_pct
+
+    return False, "Normal", diff_pct
 
 # ============================================================
-# UI CONTROLS
+# UI
 # ============================================================
 col1, col2 = st.columns(2)
 
 with col1:
-    threshold = st.slider(
-        "Significant Move Threshold (%)",
-        3.0, 20.0, 7.0, step=0.5
-    )
+    threshold = st.slider("Significant Move Threshold (%)", 3.0, 20.0, 7.0)
 
 with col2:
-    max_cycle = st.slider(
-        "Max Cycle Length (Bars)",
-        min_value=10,
-        max_value=200,
-        value=150,
-        step=5
-    )
+    max_cycle = st.slider("Max Cycle Length (Bars)", 10, 200, 150, step=5)
 
 # ============================================================
-# RUN ANALYSIS
+# RUN
 # ============================================================
-if st.button("🚀 Run Advanced Cycle Analysis"):
+if st.button("🚀 Run Cycle + Energy Scan"):
     files = requests.get(GITHUB_DIR_API).json()
-    dominant = []
+    results = []
 
-    with st.spinner("Discovering dominant cycles..."):
-        for f in files:
-            if not f["name"].endswith(".parquet"):
-                continue
+    for f in files:
+        if not f["name"].endswith(".parquet"):
+            continue
 
-            symbol = f["name"].replace(".parquet", "")
-            try:
-                df = load_df(f["download_url"])
-                res = dominant_cycle(df, symbol, threshold, max_cycle)
-                if res:
-                    dominant.append(res)
-            except Exception:
-                continue
+        symbol = f["name"].replace(".parquet", "")
+        df = load_df(f["download_url"])
 
-    if not dominant:
-        st.warning("No dominant cycles found.")
-        st.stop()
+        dom = dominant_cycle(df, symbol, threshold, max_cycle)
+        if not dom:
+            continue
 
-    df_dom = pd.DataFrame(dominant)
-    st.success(f"🧠 Dominant cycles found for {len(df_dom)} stocks")
+        pte, energy, diff = price_time_equality(df, dom["Cycle_Bars"])
 
-    # ========================================================
-    # DOMINANT CYCLE TABLE
-    # ========================================================
-    st.subheader("🧠 Dominant Cycle Per Stock")
-    st.dataframe(
-        df_dom.sort_values("Strength", ascending=False),
-        use_container_width=True
-    )
+        # Explosion Bias
+        if dom["Bull_Prob"] > dom["Bear_Prob"]:
+            bias = "Bullish"
+            base_prob = dom["Bull_Prob"]
+        else:
+            bias = "Bearish"
+            base_prob = dom["Bear_Prob"]
 
-    # ========================================================
-    # UPCOMING CYCLES TABLE
-    # ========================================================
-    upcoming = []
+        # Boost probability if energy built
+        explosion_prob = base_prob + 15 if pte else base_prob
 
-    for _, row in df_dom.iterrows():
-        file = next(f for f in files if f["name"] == f"{row['Symbol']}.parquet")
-        df = load_df(file["download_url"])
-
-        next_date, bias, prob = upcoming_cycle_info(df, row)
-
-        upcoming.append({
-            "Symbol": row["Symbol"],
-            "Dominant_Cycle_Bars": row["Cycle_Bars"],
-            "Next_Cycle_Date": next_date,
-            "Cycle_Bias": bias,
-            "Probability_%": prob,
-            "Avg_%Move": row["Avg_%Move"]
+        results.append({
+            "Symbol": symbol,
+            "Cycle_Bars": dom["Cycle_Bars"],
+            "Avg_%Move": dom["Avg_%Move"],
+            "Bull_Prob": dom["Bull_Prob"],
+            "Bear_Prob": dom["Bear_Prob"],
+            "PTE_Zone": pte,
+            "Energy_State": energy,
+            "Explosion_Bias": bias,
+            "Explosion_Prob_%": min(explosion_prob, 95)
         })
 
-    df_upcoming = pd.DataFrame(upcoming)
+    df_final = pd.DataFrame(results)
 
-    st.subheader("📅 Upcoming Cycle Dates & Direction")
+    st.subheader("⚡ Price–Time Equality Explosion Scanner")
     st.dataframe(
-        df_upcoming.sort_values("Next_Cycle_Date"),
+        df_final.sort_values(
+            ["PTE_Zone", "Explosion_Prob_%"],
+            ascending=[False, False]
+        ),
         use_container_width=True
     )
-
-    # ========================================================
-    # HEATMAP
-    # ========================================================
-    st.subheader("📊 Cycle Heatmap (Avg % Move)")
-
-    heat = df_dom.pivot_table(
-        index="Symbol",
-        columns="Cycle_Bars",
-        values="Avg_%Move"
-    )
-
-    fig, ax = plt.subplots(figsize=(10, max(4, len(heat) * 0.25)))
-    im = ax.imshow(heat, cmap="RdYlGn", aspect="auto")
-
-    ax.set_xticks(range(len(heat.columns)))
-    ax.set_xticklabels(heat.columns)
-    ax.set_yticks(range(len(heat.index)))
-    ax.set_yticklabels(heat.index)
-
-    plt.colorbar(im, ax=ax, label="Avg % Move")
-    st.pyplot(fig)
-
-    # ========================================================
-    # CYCLE OVERLAY
-    # ========================================================
-    st.subheader("📈 Cycle Overlay Chart")
-
-    sel = st.selectbox("Select Stock", df_dom["Symbol"].unique())
-    row = df_dom[df_dom["Symbol"] == sel].iloc[0]
-
-    file = next(f for f in files if f["name"] == f"{sel}.parquet")
-    df = load_df(file["download_url"])
-
-    fig, ax = plt.subplots(figsize=(12, 4))
-    ax.plot(df.index, df["close"], color="black")
-
-    cycle = int(row["Cycle_Bars"])
-    color = "green" if row["Avg_%Move"] > 0 else "red"
-
-    for i in range(0, len(df) - cycle, cycle):
-        ax.axvspan(
-            df.index[i],
-            df.index[i + cycle],
-            color=color,
-            alpha=0.08
-        )
-
-    ax.set_title(f"{sel} – Dominant Cycle Overlay ({cycle} bars)")
-    st.pyplot(fig)
-
-    # ========================================================
-    # FORWARD PROBABILITY
-    # ========================================================
-    st.subheader("🔮 Forward Cycle Probability")
-
-    st.markdown(f"""
-    **Stock:** {sel}  
-    **Dominant Cycle:** {row['Cycle_Bars']} bars  
-
-    🟢 **Bullish Probability:** {row['Bull_Prob']}%  
-    🔴 **Bearish Probability:** {row['Bear_Prob']}%  
-    """)
 
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("""
 ---
-**Advanced Cycle Engine**  
-Dominant | Long & Short | Probabilistic  
-Built for serious market research 📈📉
+🧠 **Market Truth**  
+When **price equals price after time**,  
+👉 movement = 0  
+👉 energy = stored  
+👉 **EXPLOSION is inevitable**
+
+This engine finds those zones.
 """)
