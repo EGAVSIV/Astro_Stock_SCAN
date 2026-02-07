@@ -1,22 +1,19 @@
 # ============================================================
-# 📊 AUTO CYCLE IDENTIFIER (HISTORICAL)
+# 📊 ADVANCED AUTO CYCLE ENGINE (LONG + SHORT)
 # ============================================================
 
 import requests
 import pandas as pd
 import streamlit as st
 import numpy as np
+import matplotlib.pyplot as plt
 
 # ============================================================
 # CONFIG
 # ============================================================
-st.set_page_config(
-    page_title="📊 Auto Cycle Identifier",
-    layout="wide"
-)
-
-st.title("📊 Auto Cycle Identifier (Historical Data)")
-st.caption("Automatically discovers dominant stock cycles using bar-based analysis")
+st.set_page_config("Advanced Cycle Engine", layout="wide")
+st.title("📊 Advanced Auto Cycle Engine")
+st.caption("Dominant Cycle | Heatmap | Forward Probability | Long & Short")
 
 GITHUB_DIR_API = (
     "https://api.github.com/repos/EGAVSIV/"
@@ -26,6 +23,7 @@ GITHUB_DIR_API = (
 # ============================================================
 # DATA LOADER (ROBUST)
 # ============================================================
+@st.cache_data(show_spinner=False)
 def load_df(url):
     df = pd.read_parquet(url)
 
@@ -46,38 +44,40 @@ def load_df(url):
     return df
 
 # ============================================================
-# CYCLE DETECTION ENGINE
+# DOMINANT CYCLE DETECTION
 # ============================================================
-def detect_cycles(df, symbol, min_cycle=10, max_cycle=150, threshold=7.0):
+def dominant_cycle(df, symbol, threshold, max_cycle):
     closes = df["close"].values
     dates = df.index
 
-    results = []
+    best = None
 
-    for cycle in range(min_cycle, max_cycle + 1, 5):
+    for cycle in range(10, max_cycle + 1, 5):
         moves = []
-        ranges = []
 
         for i in range(len(closes) - cycle):
-            start = closes[i]
-            end = closes[i + cycle]
-            pct = ((end - start) / start) * 100
-
+            pct = ((closes[i + cycle] - closes[i]) / closes[i]) * 100
             if abs(pct) >= threshold:
                 moves.append(pct)
-                ranges.append((dates[i].date(), dates[i + cycle].date()))
 
-        if len(moves) >= 5:  # meaningful repetition
-            results.append({
+        if len(moves) < 5:
+            continue
+
+        avg_move = np.mean(moves)
+        strength = len(moves) * abs(avg_move)
+
+        if best is None or strength > best["Strength"]:
+            best = {
                 "Symbol": symbol,
                 "Cycle_Bars": cycle,
                 "Occurrences": len(moves),
-                "Avg_%Move": round(np.mean(moves), 2),
-                "First_Cycle": f"{ranges[0][0]} → {ranges[0][1]}",
-                "Last_Cycle": f"{ranges[-1][0]} → {ranges[-1][1]}"
-            })
+                "Avg_%Move": round(avg_move, 2),
+                "Bull_Prob": round((np.array(moves) > 0).mean() * 100, 1),
+                "Bear_Prob": round((np.array(moves) < 0).mean() * 100, 1),
+                "Strength": round(strength, 2),
+            }
 
-    return results
+    return best
 
 # ============================================================
 # UI CONTROLS
@@ -99,11 +99,11 @@ with col2:
 # ============================================================
 # RUN ANALYSIS
 # ============================================================
-if st.button("🚀 Run Auto Cycle Detection"):
+if st.button("🚀 Run Advanced Cycle Analysis"):
     files = requests.get(GITHUB_DIR_API).json()
-    all_cycles = []
+    dominant = []
 
-    with st.spinner("Analyzing historical cycles..."):
+    with st.spinner("Discovering dominant cycles..."):
         for f in files:
             if not f["name"].endswith(".parquet"):
                 continue
@@ -111,47 +111,97 @@ if st.button("🚀 Run Auto Cycle Detection"):
             symbol = f["name"].replace(".parquet", "")
             try:
                 df = load_df(f["download_url"])
-                cycles = detect_cycles(
-                    df,
-                    symbol,
-                    min_cycle=10,
-                    max_cycle=max_cycle,
-                    threshold=threshold
-                )
-                all_cycles.extend(cycles)
+                res = dominant_cycle(df, symbol, threshold, max_cycle)
+                if res:
+                    dominant.append(res)
             except Exception:
                 continue
 
-    if all_cycles:
-        result_df = pd.DataFrame(all_cycles)
+    if not dominant:
+        st.warning("No dominant cycles found.")
+        st.stop()
 
-        st.success(f"✅ {result_df['Symbol'].nunique()} stocks cycle identified")
+    df_dom = pd.DataFrame(dominant)
+    st.success(f"🧠 Dominant cycles found for {len(df_dom)} stocks")
 
-        st.subheader("📌 Identified Stock Cycles")
-        st.dataframe(
-            result_df.sort_values(
-                ["Occurrences", "Avg_%Move"],
-                ascending=False
-            ),
-            use_container_width=True
+    # ========================================================
+    # TABLE
+    # ========================================================
+    st.subheader("🧠 Dominant Cycle Per Stock")
+    st.dataframe(
+        df_dom.sort_values("Strength", ascending=False),
+        use_container_width=True
+    )
+
+    # ========================================================
+    # HEATMAP
+    # ========================================================
+    st.subheader("📊 Cycle Heatmap (Avg % Move)")
+
+    heat = df_dom.pivot_table(
+        index="Symbol",
+        columns="Cycle_Bars",
+        values="Avg_%Move"
+    )
+
+    fig, ax = plt.subplots(figsize=(10, max(4, len(heat) * 0.25)))
+    im = ax.imshow(heat, cmap="RdYlGn", aspect="auto")
+
+    ax.set_xticks(range(len(heat.columns)))
+    ax.set_xticklabels(heat.columns)
+    ax.set_yticks(range(len(heat.index)))
+    ax.set_yticklabels(heat.index)
+
+    plt.colorbar(im, ax=ax, label="Avg % Move")
+    st.pyplot(fig)
+
+    # ========================================================
+    # VISUAL OVERLAY
+    # ========================================================
+    st.subheader("📈 Cycle Overlay Chart")
+
+    sel = st.selectbox("Select Stock", df_dom["Symbol"].unique())
+    row = df_dom[df_dom["Symbol"] == sel].iloc[0]
+
+    file = next(
+        f for f in files if f["name"] == f"{sel}.parquet"
+    )
+    df = load_df(file["download_url"])
+
+    fig, ax = plt.subplots(figsize=(12, 4))
+    ax.plot(df.index, df["close"], color="black")
+
+    cycle = int(row["Cycle_Bars"])
+    for i in range(0, len(df) - cycle, cycle):
+        ax.axvspan(
+            df.index[i],
+            df.index[i + cycle],
+            color="green" if row["Avg_%Move"] > 0 else "red",
+            alpha=0.08
         )
 
-        csv = result_df.to_csv(index=False).encode("utf-8")
-        st.download_button(
-            "📥 Download Cycle Data",
-            csv,
-            "auto_cycle_identified.csv",
-            "text/csv"
-        )
-    else:
-        st.warning("No dominant cycles found with current parameters.")
+    ax.set_title(f"{sel} – Dominant Cycle Overlay ({cycle} bars)")
+    st.pyplot(fig)
+
+    # ========================================================
+    # FORWARD PROBABILITY
+    # ========================================================
+    st.subheader("🔮 Forward Cycle Probability")
+
+    st.markdown(f"""
+    **Stock:** {sel}  
+    **Dominant Cycle:** {row['Cycle_Bars']} bars  
+
+    🟢 **Bullish Probability:** {row['Bull_Prob']}%  
+    🔴 **Bearish Probability:** {row['Bear_Prob']}%  
+    """)
 
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("""
 ---
-**Auto Cycle Discovery Engine**  
-Bar-based | Data-driven | No assumptions  
-Built for serious market cycle research 📈
+**Advanced Cycle Engine**  
+Dominant | Long & Short | Probabilistic  
+Built for real market research 📈📉
 """)
