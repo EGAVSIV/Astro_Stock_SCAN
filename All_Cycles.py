@@ -92,9 +92,13 @@ with col1:
 
 with col2:
     max_cycle = st.slider(
-        "Max Cycle Length (Bars)",
-        10,50, 200, 150, step=10
+        "Max Cycle Length (Bars) (Min fixed at 10)",
+        min_value=10,
+        max_value=200,
+        value=150,
+        step=5
     )
+
 
 # ============================================================
 # RUN ANALYSIS
