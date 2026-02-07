@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # ============================================================
-# CONFIG
+# PAGE CONFIG
 # ============================================================
 st.set_page_config("Advanced Cycle Engine", layout="wide")
 st.title("📊 Advanced Auto Cycle Engine")
@@ -21,7 +21,7 @@ GITHUB_DIR_API = (
 )
 
 # ============================================================
-# DATA LOADER (ROBUST)
+# DATA LOADER
 # ============================================================
 @st.cache_data(show_spinner=False)
 def load_df(url):
@@ -39,7 +39,7 @@ def load_df(url):
     df = df.sort_index()
 
     if "close" not in df.columns:
-        raise ValueError("No close price")
+        raise ValueError("No close price column")
 
     return df
 
@@ -48,8 +48,6 @@ def load_df(url):
 # ============================================================
 def dominant_cycle(df, symbol, threshold, max_cycle):
     closes = df["close"].values
-    dates = df.index
-
     best = None
 
     for cycle in range(10, max_cycle + 1, 5):
@@ -80,6 +78,28 @@ def dominant_cycle(df, symbol, threshold, max_cycle):
     return best
 
 # ============================================================
+# UPCOMING CYCLE CALCULATION
+# ============================================================
+def upcoming_cycle_info(df, row):
+    cycle = int(row["Cycle_Bars"])
+
+    # Average bar duration
+    bar_delta = (df.index[-1] - df.index[-cycle-1]) / cycle
+    next_cycle_date = df.index[-1] + bar_delta * cycle
+
+    if row["Bull_Prob"] > row["Bear_Prob"]:
+        bias = "Bullish"
+        prob = row["Bull_Prob"]
+    elif row["Bear_Prob"] > row["Bull_Prob"]:
+        bias = "Bearish"
+        prob = row["Bear_Prob"]
+    else:
+        bias = "Neutral"
+        prob = 50
+
+    return next_cycle_date.date(), bias, prob
+
+# ============================================================
 # UI CONTROLS
 # ============================================================
 col1, col2 = st.columns(2)
@@ -92,13 +112,12 @@ with col1:
 
 with col2:
     max_cycle = st.slider(
-        "Max Cycle Length (Bars) (Min fixed at 10)",
+        "Max Cycle Length (Bars)",
         min_value=10,
         max_value=200,
         value=150,
         step=5
     )
-
 
 # ============================================================
 # RUN ANALYSIS
@@ -129,11 +148,39 @@ if st.button("🚀 Run Advanced Cycle Analysis"):
     st.success(f"🧠 Dominant cycles found for {len(df_dom)} stocks")
 
     # ========================================================
-    # TABLE
+    # DOMINANT CYCLE TABLE
     # ========================================================
     st.subheader("🧠 Dominant Cycle Per Stock")
     st.dataframe(
         df_dom.sort_values("Strength", ascending=False),
+        use_container_width=True
+    )
+
+    # ========================================================
+    # UPCOMING CYCLES TABLE
+    # ========================================================
+    upcoming = []
+
+    for _, row in df_dom.iterrows():
+        file = next(f for f in files if f["name"] == f"{row['Symbol']}.parquet")
+        df = load_df(file["download_url"])
+
+        next_date, bias, prob = upcoming_cycle_info(df, row)
+
+        upcoming.append({
+            "Symbol": row["Symbol"],
+            "Dominant_Cycle_Bars": row["Cycle_Bars"],
+            "Next_Cycle_Date": next_date,
+            "Cycle_Bias": bias,
+            "Probability_%": prob,
+            "Avg_%Move": row["Avg_%Move"]
+        })
+
+    df_upcoming = pd.DataFrame(upcoming)
+
+    st.subheader("📅 Upcoming Cycle Dates & Direction")
+    st.dataframe(
+        df_upcoming.sort_values("Next_Cycle_Date"),
         use_container_width=True
     )
 
@@ -160,27 +207,27 @@ if st.button("🚀 Run Advanced Cycle Analysis"):
     st.pyplot(fig)
 
     # ========================================================
-    # VISUAL OVERLAY
+    # CYCLE OVERLAY
     # ========================================================
     st.subheader("📈 Cycle Overlay Chart")
 
     sel = st.selectbox("Select Stock", df_dom["Symbol"].unique())
     row = df_dom[df_dom["Symbol"] == sel].iloc[0]
 
-    file = next(
-        f for f in files if f["name"] == f"{sel}.parquet"
-    )
+    file = next(f for f in files if f["name"] == f"{sel}.parquet")
     df = load_df(file["download_url"])
 
     fig, ax = plt.subplots(figsize=(12, 4))
     ax.plot(df.index, df["close"], color="black")
 
     cycle = int(row["Cycle_Bars"])
+    color = "green" if row["Avg_%Move"] > 0 else "red"
+
     for i in range(0, len(df) - cycle, cycle):
         ax.axvspan(
             df.index[i],
             df.index[i + cycle],
-            color="green" if row["Avg_%Move"] > 0 else "red",
+            color=color,
             alpha=0.08
         )
 
@@ -207,5 +254,5 @@ st.markdown("""
 ---
 **Advanced Cycle Engine**  
 Dominant | Long & Short | Probabilistic  
-Built for real market research 📈📉
+Built for serious market research 📈📉
 """)
