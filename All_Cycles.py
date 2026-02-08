@@ -46,7 +46,7 @@ def get_global_date_range(stocks):
     return min(mins), max(maxs)
 
 # ============================================================
-# CORE CYCLE LOGIC (PAST CYCLES + META INFO)
+# CORE CYCLE LOGIC
 # ============================================================
 def calculate_cycles(df, symbol, start_date, cycle_len):
     results = []
@@ -62,7 +62,6 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
     i = df.index.get_loc(start_date)
     cycle_no = 1
 
-    # -------- COMPLETED CYCLES ONLY --------
     while i + cycle_len < len(df):
         s = df.iloc[i]
         e = df.iloc[i + cycle_len]
@@ -83,7 +82,6 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
         cycle_no += 1
         i = i + cycle_len + 1
 
-    # -------- RUNNING & UPCOMING (META ONLY) --------
     running = None
     upcoming = None
 
@@ -168,52 +166,56 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
     else:
         final_df = pd.concat(all_cycles, ignore_index=True)
 
-        # ================= PAST CYCLES (UNCHANGED) =================
         st.subheader("📊 Cycle-wise Gain / Loss (Completed Cycles Only)")
         st.dataframe(final_df, use_container_width=True)
 
-        # ================= SUMMARY =================
+        # ====================================================
+        # 📈 DETAILED SUMMARY (FIXED LAYOUT)
+        # ====================================================
         st.markdown("## 📈 Detailed Summary")
 
         total_cycles = len(final_df)
         avg_gain = round(final_df["Gain_%"].mean(), 2)
 
-        # ================= EXCLUSIVE GAIN BUCKETS =================
+        pos_5_10  = ((final_df["Gain_%"] >= 5)  & (final_df["Gain_%"] < 10)).sum()
+        pos_10_15 = ((final_df["Gain_%"] >= 10) & (final_df["Gain_%"] < 15)).sum()
+        pos_15_20 = ((final_df["Gain_%"] >= 15) & (final_df["Gain_%"] < 20)).sum()
+        pos_20_up = (final_df["Gain_%"] >= 20).sum()
 
-# Positive cycles (non-overlapping)
-        pos_5_10   = ((final_df["Gain_%"] >= 5)  & (final_df["Gain_%"] < 10)).sum()
-        pos_10_15  = ((final_df["Gain_%"] >= 10) & (final_df["Gain_%"] < 15)).sum()
-        pos_15_20  = ((final_df["Gain_%"] >= 15) & (final_df["Gain_%"] < 20)).sum()
-        pos_20_up  = (final_df["Gain_%"] >= 20).sum()
+        neg_5_10  = ((final_df["Gain_%"] <= -5)  & (final_df["Gain_%"] > -10)).sum()
+        neg_10_15 = ((final_df["Gain_%"] <= -10) & (final_df["Gain_%"] > -15)).sum()
+        neg_15_20 = ((final_df["Gain_%"] <= -15) & (final_df["Gain_%"] > -20)).sum()
+        neg_20_dn = (final_df["Gain_%"] <= -20).sum()
 
-# Negative cycles (non-overlapping)
-        neg_5_10   = ((final_df["Gain_%"] <= -5)  & (final_df["Gain_%"] > -10)).sum()
-        neg_10_15  = ((final_df["Gain_%"] <= -10) & (final_df["Gain_%"] > -15)).sum()
-        neg_15_20  = ((final_df["Gain_%"] <= -15) & (final_df["Gain_%"] > -20)).sum()
-        neg_20_dn  = (final_df["Gain_%"] <= -20).sum()
+        m1, m2 = st.columns(2)
+        with m1:
+            st.metric("Total Cycles", total_cycles)
+        with m2:
+            st.metric("Average Gain %", avg_gain)
 
+        st.markdown("---")
+
+        total_pos = (final_df["Gain_%"] > 0).sum()
+        total_neg = (final_df["Gain_%"] < 0).sum()
 
         c1, c2 = st.columns(2)
 
         with c1:
-            st.metric("Total Cycles", total_cycles)
-            st.metric("Average Gain %", avg_gain)
-
-            st.markdown("### ✅ Positive Cycles (Exclusive)")
-            st.write("5% – <10%  :", pos_5_10)
-            st.write("10% – <15% :", pos_10_15)
-            st.write("15% – <20% :", pos_15_20)
-            st.write("≥ 20%     :", pos_20_up)
+            st.markdown("### ✅ Positive Cycles")
+            st.write(f"**Total Positive Cycles : {total_pos}**")
+            st.write("5–10%   :", pos_5_10)
+            st.write("10–15%  :", pos_10_15)
+            st.write("15–20%  :", pos_15_20)
+            st.write("≥ 20%   :", pos_20_up)
 
         with c2:
-            st.markdown("### ❌ Negative Cycles (Exclusive)")
-            st.write("-5% – >-10%  :", neg_5_10)
-            st.write("-10% – >-15% :", neg_10_15)
-            st.write("-15% – >-20% :", neg_15_20)
-            st.write("≤ -20%       :", neg_20_dn)
+            st.markdown("### ❌ Negative Cycles")
+            st.write(f"**Total Negative Cycles : {total_neg}**")
+            st.write("-5 to -10%   :", neg_5_10)
+            st.write("-10 to -15% :", neg_10_15)
+            st.write("-15 to -20% :", neg_15_20)
+            st.write("≤ -20%      :", neg_20_dn)
 
-
-        # ================= RUNNING / UPCOMING IN SUMMARY =================
         if running_info:
             st.markdown("### 🟡 Running Cycle Status")
             st.dataframe(pd.DataFrame(running_info), use_container_width=True)
@@ -222,7 +224,6 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
             st.markdown("### 🔮 Upcoming Cycle Window")
             st.dataframe(pd.DataFrame(upcoming_info), use_container_width=True)
 
-        # ================= CSV =================
         csv_data = final_df.to_csv(index=False)
         st.download_button(
             label="📥 Download CSV",
@@ -240,6 +241,4 @@ st.markdown("""
 - Past cycles → statistical edge
 - Running cycle → trade management
 - Upcoming cycle → preparation window
-
-Nothing mixed. Everything time-aligned.
 """)
