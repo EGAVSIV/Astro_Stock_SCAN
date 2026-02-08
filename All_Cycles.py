@@ -156,7 +156,7 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
 
         # ================= EXCEL DOWNLOAD =================
         buffer = BytesIO()
-        final_df.to_excel(buffer, index=False, engine="xlsxwriter")
+        final_df.to_excel(buffer, index=False)   # ❗ NO engine specified
         buffer.seek(0)
 
         st.download_button(
@@ -165,6 +165,7 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
             file_name="cycle_gain_analysis.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 
 # ============================================================
