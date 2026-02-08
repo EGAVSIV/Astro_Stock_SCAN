@@ -6,6 +6,8 @@ import requests
 import pandas as pd
 import streamlit as st
 from datetime import datetime
+from io import BytesIO
+
 
 # ============================================================
 # CONFIG
@@ -153,14 +155,17 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
                       round((final_df["Gain_%"] > 0).mean() * 100, 1))
 
         # ================= EXCEL DOWNLOAD =================
-        excel_bytes = final_df.to_excel(index=False)
+        buffer = BytesIO()
+        final_df.to_excel(buffer, index=False, engine="xlsxwriter")
+        buffer.seek(0)
 
         st.download_button(
             label="📥 Download Excel",
-            data=excel_bytes,
+            data=buffer,
             file_name="cycle_gain_analysis.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
+
 
 # ============================================================
 # FOOTER
