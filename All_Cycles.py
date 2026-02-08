@@ -155,16 +155,15 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
                       round((final_df["Gain_%"] > 0).mean() * 100, 1))
 
         # ================= EXCEL DOWNLOAD =================
-        buffer = BytesIO()
-        final_df.to_excel(buffer, index=False)   # ❗ NO engine specified
-        buffer.seek(0)
+        csv_data = final_df.to_csv(index=False)
 
         st.download_button(
-            label="📥 Download Excel",
-            data=buffer,
-            file_name="cycle_gain_analysis.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            label="📥 Download CSV",
+            data=csv_data,
+            file_name="cycle_gain_analysis.csv",
+            mime="text/csv"
         )
+
 
 
 
