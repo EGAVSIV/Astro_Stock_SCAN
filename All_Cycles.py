@@ -46,7 +46,7 @@ def get_global_date_range(stocks):
     return min(mins), max(maxs)
 
 # ============================================================
-# CORE CYCLE LOGIC (UNCHANGED)
+# CORE CYCLE LOGIC (PAST CYCLES + META INFO)
 # ============================================================
 def calculate_cycles(df, symbol, start_date, cycle_len):
     results = []
@@ -62,6 +62,7 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
     i = df.index.get_loc(start_date)
     cycle_no = 1
 
+    # -------- COMPLETED CYCLES ONLY --------
     while i + cycle_len < len(df):
         s = df.iloc[i]
         e = df.iloc[i + cycle_len]
@@ -82,34 +83,31 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
         cycle_no += 1
         i = i + cycle_len + 1
 
-    # ================= ADDITION ONLY =================
+    # -------- RUNNING & UPCOMING (META ONLY) --------
     running = None
     upcoming = None
 
     if i < len(df):
         s = df.iloc[i]
         last = df.iloc[-1]
-
-        running_gain = ((last.close - s.close) / s.close) * 100
         expected_end_idx = min(i + cycle_len, len(df) - 1)
 
         running = {
             "Stock": symbol,
-            "Start_Date": s.name.date(),
-            "Expected_End_Date": df.index[expected_end_idx].date(),
-            "Gain_%_So_Far": round(running_gain, 2),
-            "Remark": "🟡 Running Cycle"
+            "Running_Start": s.name.date(),
+            "Running_Expected_End": df.index[expected_end_idx].date(),
+            "Running_Gain_%_So_Far": round(
+                ((last.close - s.close) / s.close) * 100, 2
+            )
         }
 
         next_start_idx = expected_end_idx + 1
         if next_start_idx < len(df):
             next_end_idx = min(next_start_idx + cycle_len, len(df) - 1)
-
             upcoming = {
                 "Stock": symbol,
-                "Start_Date": df.index[next_start_idx].date(),
-                "Expected_End_Date": df.index[next_end_idx].date(),
-                "Remark": "🔮 Upcoming Cycle"
+                "Upcoming_Start": df.index[next_start_idx].date(),
+                "Upcoming_Expected_End": df.index[next_end_idx].date()
             }
 
     return pd.DataFrame(results), running, upcoming
@@ -124,14 +122,9 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     select_all = st.checkbox("✅ Select ALL Stocks")
-
-    if select_all:
-        selected_stocks = list(stocks.keys())
-    else:
-        selected_stocks = st.multiselect(
-            "📌 Select Stocks",
-            list(stocks.keys())
-        )
+    selected_stocks = list(stocks.keys()) if select_all else st.multiselect(
+        "📌 Select Stocks", list(stocks.keys())
+    )
 
 with col2:
     start_date = st.date_input(
@@ -156,8 +149,8 @@ with col3:
 if st.button("🚀 Calculate Cycles") and selected_stocks:
 
     all_cycles = []
-    running_cycles = []
-    upcoming_cycles = []
+    running_info = []
+    upcoming_info = []
 
     for symbol in selected_stocks:
         df = load_df(stocks[symbol])
@@ -166,21 +159,20 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
         if not res.empty:
             all_cycles.append(res)
         if run:
-            running_cycles.append(run)
+            running_info.append(run)
         if up:
-            upcoming_cycles.append(up)
+            upcoming_info.append(up)
 
     if not all_cycles:
         st.warning("No sufficient data for selected inputs.")
     else:
         final_df = pd.concat(all_cycles, ignore_index=True)
 
-        st.subheader("📊 Cycle-wise Gain / Loss")
+        # ================= PAST CYCLES (UNCHANGED) =================
+        st.subheader("📊 Cycle-wise Gain / Loss (Completed Cycles Only)")
         st.dataframe(final_df, use_container_width=True)
 
-        # ====================================================
-        # 📈 DETAILED SUMMARY (UNCHANGED)
-        # ====================================================
+        # ================= SUMMARY =================
         st.markdown("## 📈 Detailed Summary")
 
         total_cycles = len(final_df)
@@ -201,7 +193,6 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
         with c1:
             st.metric("Total Cycles", total_cycles)
             st.metric("Average Gain %", avg_gain)
-
             st.markdown("### ✅ Positive Cycles")
             st.write(f"> 5%  : {pos_5}")
             st.write(f"> 10% : {pos_10}")
@@ -215,21 +206,17 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
             st.write(f"< -15% : {neg_15}")
             st.write(f"< -20% : {neg_20}")
 
-        # ================= RUNNING =================
-        if running_cycles:
-            st.subheader("🟡 Running Cycles")
-            st.dataframe(pd.DataFrame(running_cycles), use_container_width=True)
+        # ================= RUNNING / UPCOMING IN SUMMARY =================
+        if running_info:
+            st.markdown("### 🟡 Running Cycle Status")
+            st.dataframe(pd.DataFrame(running_info), use_container_width=True)
 
-        # ================= UPCOMING =================
-        if upcoming_cycles:
-            st.subheader("🔮 Upcoming Cycles")
-            st.dataframe(pd.DataFrame(upcoming_cycles), use_container_width=True)
+        if upcoming_info:
+            st.markdown("### 🔮 Upcoming Cycle Window")
+            st.dataframe(pd.DataFrame(upcoming_info), use_container_width=True)
 
-        # ====================================================
-        # CSV DOWNLOAD (UNCHANGED)
-        # ====================================================
+        # ================= CSV =================
         csv_data = final_df.to_csv(index=False)
-
         st.download_button(
             label="📥 Download CSV",
             data=csv_data,
@@ -242,10 +229,10 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
 # ============================================================
 st.markdown("""
 ---
-🧠 **How to use this summary**
-- High `>10%` count → aggressive cycle
-- High `<-10%` count → strict stop-loss needed
-- Balance tells **long / short suitability**
+🧠 **Interpretation**
+- Past cycles → statistical edge
+- Running cycle → trade management
+- Upcoming cycle → preparation window
 
-This is **cycle quality analysis**, not just stats.
+Nothing mixed. Everything time-aligned.
 """)
