@@ -1,5 +1,5 @@
 # ============================================================
-# 📊 MANUAL CYCLE GAIN / LOSS ENGINE (MULTI-STOCK + SUMMARY)
+# 📊 MANUAL CYCLE GAIN / LOSS ENGINE (ADVANCED)
 # ============================================================
 
 import requests
@@ -12,7 +12,7 @@ from datetime import datetime
 # ============================================================
 st.set_page_config("Manual Cycle Gain Engine", layout="wide")
 st.title("📊 Manual Cycle Gain / Loss Calculator")
-st.caption("Start Date → Fixed Cycle → Sequential Gain/Loss")
+st.caption("Completed | Running | Upcoming Cycles")
 
 GITHUB_DIR_API = (
     "https://api.github.com/repos/EGAVSIV/"
@@ -46,43 +46,75 @@ def get_global_date_range(stocks):
     return min(mins), max(maxs)
 
 # ============================================================
-# CORE CYCLE LOGIC (UNCHANGED)
+# CORE CYCLE LOGIC
 # ============================================================
 def calculate_cycles(df, symbol, start_date, cycle_len):
-    results = []
+    completed = []
 
     start_date = pd.to_datetime(start_date)
 
     if start_date not in df.index:
-        future_dates = df.index[df.index > start_date]
-        if len(future_dates) == 0:
-            return pd.DataFrame()
-        start_date = future_dates[0]
+        future = df.index[df.index > start_date]
+        if len(future) == 0:
+            return pd.DataFrame(), None, None
+        start_date = future[0]
 
-    i = df.index.get_loc(start_date)
+    start_idx = df.index.get_loc(start_date)
+    i = start_idx
     cycle_no = 1
 
     while i + cycle_len < len(df):
         s = df.iloc[i]
         e = df.iloc[i + cycle_len]
 
-        gain_pct = ((e.close - s.close) / s.close) * 100
+        gain = ((e.close - s.close) / s.close) * 100
 
-        results.append({
+        completed.append({
             "Stock": symbol,
             "Cycle_No": cycle_no,
-            "Cycle_Length_Bars": cycle_len,
+            "Cycle_Type": "Completed",
             "Start_Date": s.name.date(),
             "End_Date": e.name.date(),
-            "Start_Close": round(s.close, 2),
-            "End_Close": round(e.close, 2),
-            "Gain_%": round(gain_pct, 2)
+            "Gain_%": round(gain, 2)
         })
 
         cycle_no += 1
         i = i + cycle_len + 1
 
-    return pd.DataFrame(results)
+    # ================= RUNNING CYCLE =================
+    running = None
+    upcoming = None
+
+    if i < len(df):
+        s = df.iloc[i]
+        last = df.iloc[-1]
+
+        running_gain = ((last.close - s.close) / s.close) * 100
+        expected_end_idx = min(i + cycle_len, len(df) - 1)
+
+        running = {
+            "Stock": symbol,
+            "Cycle_Type": "Running",
+            "Start_Date": s.name.date(),
+            "Expected_End_Date": df.index[expected_end_idx].date(),
+            "Gain_%_So_Far": round(running_gain, 2),
+            "Remark": "🟡 Running Cycle"
+        }
+
+        # =============== UPCOMING CYCLE =================
+        next_start_idx = expected_end_idx + 1
+        if next_start_idx < len(df):
+            next_end_idx = min(next_start_idx + cycle_len, len(df) - 1)
+
+            upcoming = {
+                "Stock": symbol,
+                "Cycle_Type": "Upcoming",
+                "Start_Date": df.index[next_start_idx].date(),
+                "Expected_End_Date": df.index[next_end_idx].date(),
+                "Remark": "🔮 Upcoming Cycle"
+            }
+
+    return pd.DataFrame(completed), running, upcoming
 
 # ============================================================
 # UI INPUTS
@@ -94,14 +126,9 @@ col1, col2, col3 = st.columns(3)
 
 with col1:
     select_all = st.checkbox("✅ Select ALL Stocks")
-
-    if select_all:
-        selected_stocks = list(stocks.keys())
-    else:
-        selected_stocks = st.multiselect(
-            "📌 Select Stocks",
-            list(stocks.keys())
-        )
+    selected_stocks = list(stocks.keys()) if select_all else st.multiselect(
+        "📌 Select Stocks", list(stocks.keys())
+    )
 
 with col2:
     start_date = st.date_input(
@@ -116,8 +143,7 @@ with col3:
         "🔁 Cycle Length (Bars)",
         min_value=1,
         max_value=250,
-        value=21,
-        step=1
+        value=21
     )
 
 # ============================================================
@@ -125,80 +151,46 @@ with col3:
 # ============================================================
 if st.button("🚀 Calculate Cycles") and selected_stocks:
 
-    all_cycles = []
+    completed_all = []
+    running_all = []
+    upcoming_all = []
 
     for symbol in selected_stocks:
         df = load_df(stocks[symbol])
-        res = calculate_cycles(df, symbol, start_date, cycle_len)
-        if not res.empty:
-            all_cycles.append(res)
+        comp, run, up = calculate_cycles(df, symbol, start_date, cycle_len)
 
-    if not all_cycles:
-        st.warning("No sufficient data for selected inputs.")
-    else:
-        final_df = pd.concat(all_cycles, ignore_index=True)
+        if not comp.empty:
+            completed_all.append(comp)
+        if run:
+            running_all.append(run)
+        if up:
+            upcoming_all.append(up)
 
-        st.subheader("📊 Cycle-wise Gain / Loss")
-        st.dataframe(final_df, use_container_width=True)
+    # ================= COMPLETED =================
+    if completed_all:
+        completed_df = pd.concat(completed_all, ignore_index=True)
+        st.subheader("✅ Completed Cycles")
+        st.dataframe(completed_df, use_container_width=True)
 
-        # ====================================================
-        # 📈 DETAILED SUMMARY
-        # ====================================================
-        st.markdown("## 📈 Detailed Summary")
+    # ================= RUNNING =================
+    if running_all:
+        st.subheader("🟡 Running Cycles (Not Completed)")
+        st.dataframe(pd.DataFrame(running_all), use_container_width=True)
 
-        total_cycles = len(final_df)
-        avg_gain = round(final_df["Gain_%"].mean(), 2)
-
-        pos_5  = (final_df["Gain_%"] > 5).sum()
-        pos_10 = (final_df["Gain_%"] > 10).sum()
-        pos_15 = (final_df["Gain_%"] > 15).sum()
-        pos_20 = (final_df["Gain_%"] > 20).sum()
-
-        neg_5  = (final_df["Gain_%"] < -5).sum()
-        neg_10 = (final_df["Gain_%"] < -10).sum()
-        neg_15 = (final_df["Gain_%"] < -15).sum()
-        neg_20 = (final_df["Gain_%"] < -20).sum()
-
-        c1, c2 = st.columns(2)
-
-        with c1:
-            st.metric("Total Cycles", total_cycles)
-            st.metric("Average Gain %", avg_gain)
-
-            st.markdown("### ✅ Positive Cycles")
-            st.write(f"> 5%  : {pos_5}")
-            st.write(f"> 10% : {pos_10}")
-            st.write(f"> 15% : {pos_15}")
-            st.write(f"> 20% : {pos_20}")
-
-        with c2:
-            st.markdown("### ❌ Negative Cycles")
-            st.write(f"< -5%  : {neg_5}")
-            st.write(f"< -10% : {neg_10}")
-            st.write(f"< -15% : {neg_15}")
-            st.write(f"< -20% : {neg_20}")
-
-        # ====================================================
-        # CSV DOWNLOAD
-        # ====================================================
-        csv_data = final_df.to_csv(index=False)
-
-        st.download_button(
-            label="📥 Download CSV",
-            data=csv_data,
-            file_name="cycle_gain_analysis.csv",
-            mime="text/csv"
-        )
+    # ================= UPCOMING =================
+    if upcoming_all:
+        st.subheader("🔮 Upcoming Cycles")
+        st.dataframe(pd.DataFrame(upcoming_all), use_container_width=True)
 
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("""
 ---
-🧠 **How to use this summary**
-- High `>10%` count → aggressive cycle
-- High `<-10%` count → strict stop-loss needed
-- Balance tells **long / short suitability**
+🧠 **How to use this**
+- 🟡 Running cycle → manage trade, not enter blindly
+- 🔮 Upcoming cycle → prepare watchlist
+- Completed cycles → validate cycle quality
 
-This is **cycle quality analysis**, not just stats.
+This turns cycles into **decision timing**, not hindsight.
 """)
