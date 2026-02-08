@@ -1,5 +1,5 @@
 # ============================================================
-# 📊 MULTI-STOCK MANUAL CYCLE GAIN / LOSS ENGINE
+# 📊 MANUAL CYCLE GAIN / LOSS ENGINE (MULTI-STOCK + EXCEL)
 # ============================================================
 
 import requests
@@ -12,7 +12,7 @@ from datetime import datetime
 # ============================================================
 st.set_page_config("Manual Cycle Gain Engine", layout="wide")
 st.title("📊 Manual Cycle Gain / Loss Calculator")
-st.caption("Multi-Stock | Fixed Cycle | Excel Export")
+st.caption("Start Date → Fixed Cycle → Sequential Gain/Loss")
 
 GITHUB_DIR_API = (
     "https://api.github.com/repos/EGAVSIV/"
@@ -37,28 +37,28 @@ def load_stock_list():
     }
 
 @st.cache_data(show_spinner=False)
-def get_global_date_range(stock_urls):
+def get_global_date_range(stocks):
     mins, maxs = [], []
-    for url in stock_urls.values():
+    for url in stocks.values():
         df = load_df(url)
         mins.append(df.index.min())
         maxs.append(df.index.max())
     return min(mins), max(maxs)
 
 # ============================================================
-# CORE CYCLE LOGIC
+# CORE CYCLE LOGIC (UNCHANGED)
 # ============================================================
 def calculate_cycles(df, symbol, start_date, cycle_len):
-    rows = []
+    results = []
 
     start_date = pd.to_datetime(start_date)
 
-    # adjust if date missing
+    # adjust start date if missing
     if start_date not in df.index:
-        future = df.index[df.index >= start_date]
-        if len(future) == 0:
+        future_dates = df.index[df.index > start_date]
+        if len(future_dates) == 0:
             return pd.DataFrame()
-        start_date = future[0]
+        start_date = future_dates[0]
 
     i = df.index.get_loc(start_date)
     cycle_no = 1
@@ -67,26 +67,26 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
         s = df.iloc[i]
         e = df.iloc[i + cycle_len]
 
-        gain = ((e.close - s.close) / s.close) * 100
+        gain_pct = ((e.close - s.close) / s.close) * 100
 
-        rows.append({
+        results.append({
             "Stock": symbol,
             "Cycle_No": cycle_no,
-            "Cycle_Length": cycle_len,
+            "Cycle_Length_Bars": cycle_len,
             "Start_Date": s.name.date(),
             "End_Date": e.name.date(),
             "Start_Close": round(s.close, 2),
             "End_Close": round(e.close, 2),
-            "Gain_%": round(gain, 2)
+            "Gain_%": round(gain_pct, 2)
         })
 
         cycle_no += 1
-        i = i + cycle_len + 1
+        i = i + cycle_len + 1  # next cycle starts after end bar
 
-    return pd.DataFrame(rows)
+    return pd.DataFrame(results)
 
 # ============================================================
-# UI
+# UI INPUTS
 # ============================================================
 stocks = load_stock_list()
 min_date, max_date = get_global_date_range(stocks)
@@ -112,7 +112,8 @@ with col3:
         "🔁 Cycle Length (Bars)",
         min_value=1,
         max_value=250,
-        value=21
+        value=21,
+        step=1
     )
 
 # ============================================================
@@ -120,49 +121,43 @@ with col3:
 # ============================================================
 if st.button("🚀 Calculate Cycles") and selected_stocks:
 
-    all_results = []
+    all_cycles = []
 
     for symbol in selected_stocks:
         df = load_df(stocks[symbol])
         res = calculate_cycles(df, symbol, start_date, cycle_len)
         if not res.empty:
-            all_results.append(res)
+            all_cycles.append(res)
 
-    if not all_results:
-        st.warning("No valid cycles found.")
+    if not all_cycles:
+        st.warning("No sufficient data for selected inputs.")
     else:
-        final_df = pd.concat(all_results, ignore_index=True)
+        final_df = pd.concat(all_cycles, ignore_index=True)
 
         st.subheader("📊 Cycle-wise Gain / Loss")
         st.dataframe(final_df, use_container_width=True)
 
-        # ============================
-        # SUMMARY
-        # ============================
+        # ================= SUMMARY =================
         st.markdown("### 📈 Summary")
-        colA, colB, colC = st.columns(3)
+        c1, c2, c3 = st.columns(3)
 
-        with colA:
+        with c1:
             st.metric("Total Cycles", len(final_df))
 
-        with colB:
-            st.metric(
-                "Avg Gain %",
-                round(final_df["Gain_%"].mean(), 2)
-            )
+        with c2:
+            st.metric("Avg Gain %",
+                      round(final_df["Gain_%"].mean(), 2))
 
-        with colC:
-            st.metric(
-                "Winning %",
-                round((final_df["Gain_%"] > 0).mean() * 100, 1)
-            )
+        with c3:
+            st.metric("Winning Cycles %",
+                      round((final_df["Gain_%"] > 0).mean() * 100, 1))
 
-        # ============================
-        # EXCEL DOWNLOAD
-        # ============================
+        # ================= EXCEL DOWNLOAD =================
+        excel_bytes = final_df.to_excel(index=False)
+
         st.download_button(
             label="📥 Download Excel",
-            data=final_df.to_excel(index=False),
+            data=excel_bytes,
             file_name="cycle_gain_analysis.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
@@ -172,7 +167,9 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
 # ============================================================
 st.markdown("""
 ---
-🧠 **Why this matters**  
-Fixed time + fixed bars remove bias.  
-This reveals **true market rhythm**, not indicators.
+🧠 **Cycle Truth**  
+Fixed time + fixed bars  
+= **pure time-based market behavior**
+
+This tool shows **what really happened**, cycle by cycle.
 """)
