@@ -1,19 +1,18 @@
 # ============================================================
-# 📊 ADVANCED AUTO CYCLE + PRICE-TIME EQUALITY ENGINE
+# 📊 MANUAL CYCLE GAIN / LOSS ENGINE
 # ============================================================
 
 import requests
 import pandas as pd
 import streamlit as st
-import numpy as np
-import matplotlib.pyplot as plt
+from datetime import datetime
 
 # ============================================================
 # CONFIG
 # ============================================================
-st.set_page_config("Cycle + Price-Time Engine", layout="wide")
-st.title("📊 Advanced Cycle + Price–Time Equality Engine")
-st.caption("Dominant Cycle | Energy Build-up | Explosion Probability")
+st.set_page_config("Manual Cycle Gain Engine", layout="wide")
+st.title("📊 Manual Cycle Gain / Loss Calculator")
+st.caption("Start Date → Fixed Cycle → Sequential Gain/Loss")
 
 GITHUB_DIR_API = (
     "https://api.github.com/repos/EGAVSIV/"
@@ -30,135 +29,135 @@ def load_df(url):
     df = df.sort_index()
     return df
 
-# ============================================================
-# DOMINANT CYCLE
-# ============================================================
-def dominant_cycle(df, symbol, threshold, max_cycle):
-    closes = df["close"].values
-    best = None
-
-    for cycle in range(10, max_cycle + 1, 5):
-        moves = []
-
-        for i in range(len(closes) - cycle):
-            pct = ((closes[i + cycle] - closes[i]) / closes[i]) * 100
-            if abs(pct) >= threshold:
-                moves.append(pct)
-
-        if len(moves) < 5:
-            continue
-
-        avg_move = np.mean(moves)
-        strength = len(moves) * abs(avg_move)
-
-        if best is None or strength > best["Strength"]:
-            best = {
-                "Symbol": symbol,
-                "Cycle_Bars": cycle,
-                "Avg_%Move": round(avg_move, 2),
-                "Bull_Prob": round((np.array(moves) > 0).mean() * 100, 1),
-                "Bear_Prob": round((np.array(moves) < 0).mean() * 100, 1),
-                "Strength": round(strength, 2),
-            }
-
-    return best
+@st.cache_data(show_spinner=False)
+def load_stock_list():
+    files = requests.get(GITHUB_DIR_API).json()
+    stocks = {
+        f["name"].replace(".parquet", ""): f["download_url"]
+        for f in files if f["name"].endswith(".parquet")
+    }
+    return stocks
 
 # ============================================================
-# PRICE–TIME EQUALITY + ENERGY BUILDUP
+# UI INPUTS
 # ============================================================
-def price_time_equality(df, cycle, tolerance=0.015):
-    if len(df) < cycle + 5:
-        return False, "Normal", None
+stocks = load_stock_list()
 
-    price_now = df["close"].iloc[-1]
-    price_then = df["close"].iloc[-cycle]
-
-    diff_pct = abs(price_now - price_then) / price_then
-
-    if diff_pct <= tolerance:
-        recent_vol = df["close"].pct_change().rolling(10).std().iloc[-1]
-        past_vol = df["close"].pct_change().rolling(30).std().iloc[-1]
-
-        if recent_vol < past_vol:
-            return True, "Compressed", diff_pct
-
-    return False, "Normal", diff_pct
-
-# ============================================================
-# UI
-# ============================================================
-col1, col2 = st.columns(2)
+col1, col2, col3 = st.columns(3)
 
 with col1:
-    threshold = st.slider("Significant Move Threshold (%)", 3.0, 20.0, 7.0)
+    symbol = st.selectbox("📌 Select Stock", list(stocks.keys()))
 
 with col2:
-    max_cycle = st.slider("Max Cycle Length (Bars)", 10, 200, 150, step=5)
+    start_date = st.date_input(
+        "📅 Cycle Start Date",
+        value=datetime(2025, 1, 1)
+    )
+
+with col3:
+    cycle_len = st.number_input(
+        "🔁 Cycle Length (Bars)",
+        min_value=1,
+        max_value=250,
+        value=21,
+        step=1
+    )
+
+# ============================================================
+# CORE CYCLE LOGIC
+# ============================================================
+def calculate_cycles(df, symbol, start_date, cycle_len):
+    results = []
+
+    # --- Ensure datetime ---
+    start_date = pd.to_datetime(start_date)
+
+    # --- Adjust start date if not present ---
+    if start_date not in df.index:
+        future_dates = df.index[df.index > start_date]
+        if len(future_dates) == 0:
+            return pd.DataFrame()
+        start_date = future_dates[0]
+
+    start_idx = df.index.get_loc(start_date)
+
+    cycle_no = 1
+    i = start_idx
+
+    while i + cycle_len < len(df):
+        start_row = df.iloc[i]
+        end_row = df.iloc[i + cycle_len]
+
+        start_close = start_row["close"]
+        end_close = end_row["close"]
+
+        gain_pct = ((end_close - start_close) / start_close) * 100
+
+        results.append({
+            "Stock": symbol,
+            "Cycle_No": cycle_no,
+            "Cycle_Length_Bars": cycle_len,
+            "Start_Date": start_row.name.date(),
+            "End_Date": end_row.name.date(),
+            "Start_Close": round(start_close, 2),
+            "End_Close": round(end_close, 2),
+            "Gain_%": round(gain_pct, 2)
+        })
+
+        cycle_no += 1
+        i = i + cycle_len + 1   # 👉 next cycle starts AFTER end bar
+
+    return pd.DataFrame(results)
 
 # ============================================================
 # RUN
 # ============================================================
-if st.button("🚀 Run Cycle + Energy Scan"):
-    files = requests.get(GITHUB_DIR_API).json()
-    results = []
+if st.button("🚀 Calculate Cycles"):
 
-    for f in files:
-        if not f["name"].endswith(".parquet"):
-            continue
+    df = load_df(stocks[symbol])
 
-        symbol = f["name"].replace(".parquet", "")
-        df = load_df(f["download_url"])
-
-        dom = dominant_cycle(df, symbol, threshold, max_cycle)
-        if not dom:
-            continue
-
-        pte, energy, diff = price_time_equality(df, dom["Cycle_Bars"])
-
-        # Explosion Bias
-        if dom["Bull_Prob"] > dom["Bear_Prob"]:
-            bias = "Bullish"
-            base_prob = dom["Bull_Prob"]
-        else:
-            bias = "Bearish"
-            base_prob = dom["Bear_Prob"]
-
-        # Boost probability if energy built
-        explosion_prob = base_prob + 15 if pte else base_prob
-
-        results.append({
-            "Symbol": symbol,
-            "Cycle_Bars": dom["Cycle_Bars"],
-            "Avg_%Move": dom["Avg_%Move"],
-            "Bull_Prob": dom["Bull_Prob"],
-            "Bear_Prob": dom["Bear_Prob"],
-            "PTE_Zone": pte,
-            "Energy_State": energy,
-            "Explosion_Bias": bias,
-            "Explosion_Prob_%": min(explosion_prob, 95)
-        })
-
-    df_final = pd.DataFrame(results)
-
-    st.subheader("⚡ Price–Time Equality Explosion Scanner")
-    st.dataframe(
-        df_final.sort_values(
-            ["PTE_Zone", "Explosion_Prob_%"],
-            ascending=[False, False]
-        ),
-        use_container_width=True
+    cycle_df = calculate_cycles(
+        df,
+        symbol,
+        start_date,
+        cycle_len
     )
+
+    if cycle_df.empty:
+        st.warning("No sufficient data for selected inputs.")
+    else:
+        st.subheader(
+            f"📈 {symbol} | Cycle Length = {cycle_len} Bars"
+        )
+
+        st.dataframe(
+            cycle_df,
+            use_container_width=True
+        )
+
+        # Summary
+        st.markdown("### 📊 Summary")
+        st.metric(
+            "Total Cycles",
+            len(cycle_df)
+        )
+        st.metric(
+            "Avg Gain %",
+            round(cycle_df["Gain_%"].mean(), 2)
+        )
+        st.metric(
+            "Winning Cycles %",
+            round((cycle_df["Gain_%"] > 0).mean() * 100, 1)
+        )
 
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("""
 ---
-🧠 **Market Truth**  
-When **price equals price after time**,  
-👉 movement = 0  
-👉 energy = stored  
-👉 **EXPLOSION is inevitable**
+🧠 **Cycle Truth**  
+Fixed time + fixed bars  
+= **pure time-based market behavior**
 
-This engine finds those zones.
+This tool shows **what really happened**, cycle by cycle.
 """)
