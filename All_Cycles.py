@@ -1,5 +1,5 @@
 # ============================================================
-# 📊 MANUAL CYCLE GAIN / LOSS ENGINE (ADVANCED)
+# 📊 MANUAL CYCLE GAIN / LOSS ENGINE (MULTI-STOCK + SUMMARY)
 # ============================================================
 
 import requests
@@ -46,18 +46,18 @@ def get_global_date_range(stocks):
     return min(mins), max(maxs)
 
 # ============================================================
-# CORE CYCLE LOGIC
+# CORE CYCLE LOGIC (COMPLETED CYCLES)
 # ============================================================
 def calculate_cycles(df, symbol, start_date, cycle_len):
-    completed = []
+    results = []
 
     start_date = pd.to_datetime(start_date)
 
     if start_date not in df.index:
-        future = df.index[df.index > start_date]
-        if len(future) == 0:
+        future_dates = df.index[df.index > start_date]
+        if len(future_dates) == 0:
             return pd.DataFrame(), None, None
-        start_date = future[0]
+        start_date = future_dates[0]
 
     start_idx = df.index.get_loc(start_date)
     i = start_idx
@@ -67,15 +67,15 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
         s = df.iloc[i]
         e = df.iloc[i + cycle_len]
 
-        gain = ((e.close - s.close) / s.close) * 100
+        gain_pct = ((e.close - s.close) / s.close) * 100
 
-        completed.append({
+        results.append({
             "Stock": symbol,
             "Cycle_No": cycle_no,
-            "Cycle_Type": "Completed",
+            "Cycle_Length_Bars": cycle_len,
             "Start_Date": s.name.date(),
             "End_Date": e.name.date(),
-            "Gain_%": round(gain, 2)
+            "Gain_%": round(gain_pct, 2)
         })
 
         cycle_no += 1
@@ -94,27 +94,25 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
 
         running = {
             "Stock": symbol,
-            "Cycle_Type": "Running",
             "Start_Date": s.name.date(),
             "Expected_End_Date": df.index[expected_end_idx].date(),
             "Gain_%_So_Far": round(running_gain, 2),
             "Remark": "🟡 Running Cycle"
         }
 
-        # =============== UPCOMING CYCLE =================
+        # ================= UPCOMING CYCLE =================
         next_start_idx = expected_end_idx + 1
         if next_start_idx < len(df):
             next_end_idx = min(next_start_idx + cycle_len, len(df) - 1)
 
             upcoming = {
                 "Stock": symbol,
-                "Cycle_Type": "Upcoming",
                 "Start_Date": df.index[next_start_idx].date(),
                 "Expected_End_Date": df.index[next_end_idx].date(),
                 "Remark": "🔮 Upcoming Cycle"
             }
 
-    return pd.DataFrame(completed), running, upcoming
+    return pd.DataFrame(results), running, upcoming
 
 # ============================================================
 # UI INPUTS
@@ -143,7 +141,8 @@ with col3:
         "🔁 Cycle Length (Bars)",
         min_value=1,
         max_value=250,
-        value=21
+        value=21,
+        step=1
     )
 
 # ============================================================
@@ -168,9 +167,16 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
 
     # ================= COMPLETED =================
     if completed_all:
-        completed_df = pd.concat(completed_all, ignore_index=True)
-        st.subheader("✅ Completed Cycles")
-        st.dataframe(completed_df, use_container_width=True)
+        final_df = pd.concat(completed_all, ignore_index=True)
+
+        st.subheader("📊 Completed Cycles")
+        st.dataframe(final_df, use_container_width=True)
+
+        # ================= SUMMARY =================
+        st.markdown("## 📈 Detailed Summary")
+
+        st.metric("Total Cycles", len(final_df))
+        st.metric("Average Gain %", round(final_df["Gain_%"].mean(), 2))
 
     # ================= RUNNING =================
     if running_all:
@@ -182,15 +188,26 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
         st.subheader("🔮 Upcoming Cycles")
         st.dataframe(pd.DataFrame(upcoming_all), use_container_width=True)
 
+    # ================= CSV DOWNLOAD =================
+    if completed_all:
+        csv_data = final_df.to_csv(index=False)
+
+        st.download_button(
+            label="📥 Download CSV",
+            data=csv_data,
+            file_name="cycle_gain_analysis.csv",
+            mime="text/csv"
+        )
+
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("""
 ---
-🧠 **How to use this**
-- 🟡 Running cycle → manage trade, not enter blindly
-- 🔮 Upcoming cycle → prepare watchlist
-- Completed cycles → validate cycle quality
+🧠 **Interpretation**
+- 🟡 Running cycle → manage risk, avoid fresh entries
+- 🔮 Upcoming cycle → prepare watchlist & alerts
+- Completed cycles → validate cycle strength
 
-This turns cycles into **decision timing**, not hindsight.
+This adds **time awareness** to cycle trading.
 """)
