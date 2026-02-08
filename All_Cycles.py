@@ -1,13 +1,11 @@
 # ============================================================
-# 📊 MANUAL CYCLE GAIN / LOSS ENGINE (MULTI-STOCK + EXCEL)
+# 📊 MANUAL CYCLE GAIN / LOSS ENGINE (MULTI-STOCK + SUMMARY)
 # ============================================================
 
 import requests
 import pandas as pd
 import streamlit as st
 from datetime import datetime
-from io import BytesIO
-
 
 # ============================================================
 # CONFIG
@@ -55,7 +53,6 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
 
     start_date = pd.to_datetime(start_date)
 
-    # adjust start date if missing
     if start_date not in df.index:
         future_dates = df.index[df.index > start_date]
         if len(future_dates) == 0:
@@ -83,7 +80,7 @@ def calculate_cycles(df, symbol, start_date, cycle_len):
         })
 
         cycle_no += 1
-        i = i + cycle_len + 1  # next cycle starts after end bar
+        i = i + cycle_len + 1
 
     return pd.DataFrame(results)
 
@@ -96,10 +93,15 @@ min_date, max_date = get_global_date_range(stocks)
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    selected_stocks = st.multiselect(
-        "📌 Select Stocks",
-        list(stocks.keys())
-    )
+    select_all = st.checkbox("✅ Select ALL Stocks")
+
+    if select_all:
+        selected_stocks = list(stocks.keys())
+    else:
+        selected_stocks = st.multiselect(
+            "📌 Select Stocks",
+            list(stocks.keys())
+        )
 
 with col2:
     start_date = st.date_input(
@@ -139,22 +141,46 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
         st.subheader("📊 Cycle-wise Gain / Loss")
         st.dataframe(final_df, use_container_width=True)
 
-        # ================= SUMMARY =================
-        st.markdown("### 📈 Summary")
-        c1, c2, c3 = st.columns(3)
+        # ====================================================
+        # 📈 DETAILED SUMMARY
+        # ====================================================
+        st.markdown("## 📈 Detailed Summary")
+
+        total_cycles = len(final_df)
+        avg_gain = round(final_df["Gain_%"].mean(), 2)
+
+        pos_5  = (final_df["Gain_%"] > 5).sum()
+        pos_10 = (final_df["Gain_%"] > 10).sum()
+        pos_15 = (final_df["Gain_%"] > 15).sum()
+        pos_20 = (final_df["Gain_%"] > 20).sum()
+
+        neg_5  = (final_df["Gain_%"] < -5).sum()
+        neg_10 = (final_df["Gain_%"] < -10).sum()
+        neg_15 = (final_df["Gain_%"] < -15).sum()
+        neg_20 = (final_df["Gain_%"] < -20).sum()
+
+        c1, c2 = st.columns(2)
 
         with c1:
-            st.metric("Total Cycles", len(final_df))
+            st.metric("Total Cycles", total_cycles)
+            st.metric("Average Gain %", avg_gain)
+
+            st.markdown("### ✅ Positive Cycles")
+            st.write(f"> 5%  : {pos_5}")
+            st.write(f"> 10% : {pos_10}")
+            st.write(f"> 15% : {pos_15}")
+            st.write(f"> 20% : {pos_20}")
 
         with c2:
-            st.metric("Avg Gain %",
-                      round(final_df["Gain_%"].mean(), 2))
+            st.markdown("### ❌ Negative Cycles")
+            st.write(f"< -5%  : {neg_5}")
+            st.write(f"< -10% : {neg_10}")
+            st.write(f"< -15% : {neg_15}")
+            st.write(f"< -20% : {neg_20}")
 
-        with c3:
-            st.metric("Winning Cycles %",
-                      round((final_df["Gain_%"] > 0).mean() * 100, 1))
-
-        # ================= EXCEL DOWNLOAD =================
+        # ====================================================
+        # CSV DOWNLOAD
+        # ====================================================
         csv_data = final_df.to_csv(index=False)
 
         st.download_button(
@@ -164,17 +190,15 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
             mime="text/csv"
         )
 
-
-
-
 # ============================================================
 # FOOTER
 # ============================================================
 st.markdown("""
 ---
-🧠 **Cycle Truth**  
-Fixed time + fixed bars  
-= **pure time-based market behavior**
+🧠 **How to use this summary**
+- High `>10%` count → aggressive cycle
+- High `<-10%` count → strict stop-loss needed
+- Balance tells **long / short suitability**
 
-This tool shows **what really happened**, cycle by cycle.
+This is **cycle quality analysis**, not just stats.
 """)
