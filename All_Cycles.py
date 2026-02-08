@@ -178,33 +178,40 @@ if st.button("🚀 Calculate Cycles") and selected_stocks:
         total_cycles = len(final_df)
         avg_gain = round(final_df["Gain_%"].mean(), 2)
 
-        pos_5  = (final_df["Gain_%"] > 5).sum()
-        pos_10 = (final_df["Gain_%"] > 10).sum()
-        pos_15 = (final_df["Gain_%"] > 15).sum()
-        pos_20 = (final_df["Gain_%"] > 20).sum()
+        # ================= EXCLUSIVE GAIN BUCKETS =================
 
-        neg_5  = (final_df["Gain_%"] < -5).sum()
-        neg_10 = (final_df["Gain_%"] < -10).sum()
-        neg_15 = (final_df["Gain_%"] < -15).sum()
-        neg_20 = (final_df["Gain_%"] < -20).sum()
+# Positive cycles (non-overlapping)
+        pos_5_10   = ((final_df["Gain_%"] >= 5)  & (final_df["Gain_%"] < 10)).sum()
+        pos_10_15  = ((final_df["Gain_%"] >= 10) & (final_df["Gain_%"] < 15)).sum()
+        pos_15_20  = ((final_df["Gain_%"] >= 15) & (final_df["Gain_%"] < 20)).sum()
+        pos_20_up  = (final_df["Gain_%"] >= 20).sum()
+
+# Negative cycles (non-overlapping)
+        neg_5_10   = ((final_df["Gain_%"] <= -5)  & (final_df["Gain_%"] > -10)).sum()
+        neg_10_15  = ((final_df["Gain_%"] <= -10) & (final_df["Gain_%"] > -15)).sum()
+        neg_15_20  = ((final_df["Gain_%"] <= -15) & (final_df["Gain_%"] > -20)).sum()
+        neg_20_dn  = (final_df["Gain_%"] <= -20).sum()
+
 
         c1, c2 = st.columns(2)
 
         with c1:
             st.metric("Total Cycles", total_cycles)
             st.metric("Average Gain %", avg_gain)
-            st.markdown("### ✅ Positive Cycles")
-            st.write(f"> 5%  : {pos_5}")
-            st.write(f"> 10% : {pos_10}")
-            st.write(f"> 15% : {pos_15}")
-            st.write(f"> 20% : {pos_20}")
+
+            st.markdown("### ✅ Positive Cycles (Exclusive)")
+            st.write("5% – <10%  :", pos_5_10)
+            st.write("10% – <15% :", pos_10_15)
+            st.write("15% – <20% :", pos_15_20)
+            st.write("≥ 20%     :", pos_20_up)
 
         with c2:
-            st.markdown("### ❌ Negative Cycles")
-            st.write(f"< -5%  : {neg_5}")
-            st.write(f"< -10% : {neg_10}")
-            st.write(f"< -15% : {neg_15}")
-            st.write(f"< -20% : {neg_20}")
+            st.markdown("### ❌ Negative Cycles (Exclusive)")
+            st.write("-5% – >-10%  :", neg_5_10)
+            st.write("-10% – >-15% :", neg_10_15)
+            st.write("-15% – >-20% :", neg_15_20)
+            st.write("≤ -20%       :", neg_20_dn)
+
 
         # ================= RUNNING / UPCOMING IN SUMMARY =================
         if running_info:
