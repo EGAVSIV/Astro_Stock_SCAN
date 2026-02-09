@@ -648,7 +648,7 @@ Gaurav Singh Yadav</b><br><br>
 🩷💛🩵💙🩶💜🤍🤎💖 Built With Love 🫶<br>
 Energy | Commodity | Quant Intelligence 📶<br><br>
 
-📱 +91-8003994518 〽️<br>
+📱 +91-80039945180 〽️<br>
 
 💬 
 <a href="https://wa.me/9180039945180" target="_blank">
