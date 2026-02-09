@@ -601,11 +601,22 @@ with tabs[2]:
 
 
 st.markdown("""
----
-**Designed by:-  
-Gaurav Singh Yadav**   
-🩷💛🩵💙🩶💜🤍🤎💖  Built With Love 🫶  
-Energy | Commodity | Quant Intelligence 📶  
-📱 +91-8003994518 〽️   
-📧 yadav.gauravsingh@gmail.com ™️
-""")
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+
+<div style="line-height: 1.6;">
+<b>Designed by:-<br>
+Gaurav Singh Yadav</b><br><br>
+
+🩷💛🩵💙🩶💜🤍🤎💖 Built With Love 🫶<br>
+Energy | Commodity | Quant Intelligence 📶<br><br>
+
+📱 +91-8003994518 〽️<br>
+
+💬 
+<a href="https://wa.me/918003994518" target="_blank">
+<i class="fa fa-whatsapp" style="color:#25D366;"></i> WhatsApp
+</a><br>
+
+📧 <a href="mailto:yadav.gauravsingh@gmail.com">yadav.gauravsingh@gmail.com</a> ™️
+</div>
+""", unsafe_allow_html=True)
