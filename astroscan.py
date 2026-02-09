@@ -651,7 +651,7 @@ Energy | Commodity | Quant Intelligence 📶<br><br>
 📱 +91-8003994518 〽️<br>
 
 💬 
-<a href="https://wa.me/918003994518" target="_blank">
+<a href="https://wa.me/9180039945180" target="_blank">
 <i class="fa fa-whatsapp" style="color:#25D366;"></i> WhatsApp
 </a><br>
 
