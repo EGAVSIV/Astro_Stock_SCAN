@@ -10,6 +10,67 @@ import streamlit as st
 import matplotlib
 from matplotlib.figure import Figure
 import mplfinance as mpf
+import base64
+
+def set_bg_image(image_path: str):
+    with open(image_path, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode()
+
+    st.markdown(
+        f"""
+        <style>
+        .stApp {{
+            background-image: url("data:image/png;base64,{encoded}");
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+
+# ---------------- PASSWORD HASH ----------------
+def hash_pwd(pwd):
+    return hashlib.sha256(pwd.encode()).hexdigest()
+
+# ---------------- USERS ----------------
+USERS = st.secrets["users"]
+
+# 🔐 Users allowed to select ANY future date
+FUTURE_ALLOWED_USERS = {
+    "admin",
+    "gaurav",
+    "premium",
+    "EGAVSIV",
+    "DIPTI"
+}
+
+# ---------------- SESSION INIT ----------------
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if "username" not in st.session_state:
+    st.session_state.username = None
+
+if not st.session_state.authenticated:
+    st.title("🔐 Login Required")
+
+    u = st.text_input("Username")
+    p = st.text_input("Password", type="password")
+
+    if st.button("Login"):
+        if u in USERS and hash_pwd(p) == USERS[u]:
+            st.session_state.authenticated = True
+            st.session_state.username = u   # ✅ STORE USERNAME
+            st.rerun()
+        else:
+            st.error("Invalid credentials")
+
+    st.stop()
 
 # ---------------------------------------------------------------------
 # MATPLOTLIB BACKEND
@@ -24,6 +85,7 @@ st.set_page_config(
     page_icon="🪐",
     layout="wide",
 )
+set_bg_image("Assets/BG11.png")
 
 # ---------------------------------------------------------------------
 # THEMES
