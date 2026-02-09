@@ -2,6 +2,7 @@ import datetime
 import time
 import math
 from typing import List, Tuple
+
 import requests
 import pandas as pd
 import swisseph as swe
@@ -9,9 +10,6 @@ import streamlit as st
 import matplotlib
 from matplotlib.figure import Figure
 import mplfinance as mpf
-#import pyswisseph as swe
-
-
 
 # ---------------------------------------------------------------------
 # MATPLOTLIB BACKEND
@@ -80,8 +78,18 @@ swe.set_sid_mode(swe.SIDM_LAHIRI, 0, 0)
 NAK_DEG = 13 + 1 / 3
 
 ZODIACS = [
-    "Aries", "Taurus", "Gemini", "Cancer", "Leo", "Virgo",
-    "Libra", "Scorpio", "Sagittarius", "Capricorn", "Aquarius", "Pisces"
+    "Aries",
+    "Taurus",
+    "Gemini",
+    "Cancer",
+    "Leo",
+    "Virgo",
+    "Libra",
+    "Scorpio",
+    "Sagittarius",
+    "Capricorn",
+    "Aquarius",
+    "Pisces",
 ]
 
 PLANETS = {
@@ -97,43 +105,76 @@ PLANETS = {
 
 ASPECTS = {
     "Opposition": {
-        "Aries": "Libra", "Taurus": "Scorpio", "Gemini": "Sagittarius",
-        "Cancer": "Capricorn", "Leo": "Aquarius", "Virgo": "Pisces",
-        "Libra": "Aries", "Scorpio": "Taurus", "Sagittarius": "Gemini",
-        "Capricorn": "Cancer", "Aquarius": "Leo", "Pisces": "Virgo",
+        "Aries": "Libra",
+        "Taurus": "Scorpio",
+        "Gemini": "Sagittarius",
+        "Cancer": "Capricorn",
+        "Leo": "Aquarius",
+        "Virgo": "Pisces",
+        "Libra": "Aries",
+        "Scorpio": "Taurus",
+        "Sagittarius": "Gemini",
+        "Capricorn": "Cancer",
+        "Aquarius": "Leo",
+        "Pisces": "Virgo",
     },
     "Conjunction": {z: z for z in ZODIACS},
     "Square": {
-        "Aries": "Cancer", "Taurus": "Leo", "Gemini": "Virgo",
-        "Cancer": "Libra", "Leo": "Scorpio", "Virgo": "Sagittarius",
-        "Libra": "Capricorn", "Scorpio": "Aquarius", "Sagittarius": "Pisces",
-        "Capricorn": "Aries", "Aquarius": "Taurus", "Pisces": "Gemini",
+        "Aries": "Cancer",
+        "Taurus": "Leo",
+        "Gemini": "Virgo",
+        "Cancer": "Libra",
+        "Leo": "Scorpio",
+        "Virgo": "Sagittarius",
+        "Libra": "Capricorn",
+        "Scorpio": "Aquarius",
+        "Sagittarius": "Pisces",
+        "Capricorn": "Aries",
+        "Aquarius": "Taurus",
+        "Pisces": "Gemini",
     },
     "Trine": {
-        "Aries": "Leo", "Taurus": "Virgo", "Gemini": "Libra",
-        "Cancer": "Scorpio", "Leo": "Sagittarius", "Virgo": "Capricorn",
-        "Libra": "Aquarius", "Scorpio": "Pisces", "Sagittarius": "Aries",
-        "Capricorn": "Taurus", "Aquarius": "Gemini", "Pisces": "Cancer",
+        "Aries": "Leo",
+        "Taurus": "Virgo",
+        "Gemini": "Libra",
+        "Cancer": "Scorpio",
+        "Leo": "Sagittarius",
+        "Virgo": "Capricorn",
+        "Libra": "Aquarius",
+        "Scorpio": "Pisces",
+        "Sagittarius": "Aries",
+        "Capricorn": "Taurus",
+        "Aquarius": "Gemini",
+        "Pisces": "Cancer",
     },
     "Sextile": {
-        "Aries": "Gemini", "Taurus": "Cancer", "Gemini": "Leo",
-        "Cancer": "Virgo", "Leo": "Libra", "Virgo": "Scorpio",
-        "Libra": "Sagittarius", "Scorpio": "Capricorn",
-        "Sagittarius": "Aquarius", "Capricorn": "Pisces",
-        "Aquarius": "Aries", "Pisces": "Taurus",
+        "Aries": "Gemini",
+        "Taurus": "Cancer",
+        "Gemini": "Leo",
+        "Cancer": "Virgo",
+        "Leo": "Libra",
+        "Virgo": "Scorpio",
+        "Libra": "Sagittarius",
+        "Scorpio": "Capricorn",
+        "Sagittarius": "Aquarius",
+        "Capricorn": "Pisces",
+        "Aquarius": "Aries",
+        "Pisces": "Taurus",
     },
 }
 
 # GitHub data folder
-GITHUB_DIR_API = \
+GITHUB_DIR_API = (
     "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
+)
 
 # ---------------------------------------------------------------------
-# ORIGINAL TKINTER LOGIC (ported)
+# ASTRO HELPERS
 # ---------------------------------------------------------------------
-def get_sidereal_lon_from_jd(jd: float, planet_code: int):
+def get_sidereal_lon_from_jd(jd: float, planet_code: int) -> Tuple[float, float]:
     """Return sidereal longitude + speed (Lahiri)."""
     res = swe.calc_ut(jd, planet_code)
+
     if isinstance(res, tuple) and isinstance(res[0], (list, tuple)):
         lon = res[0][0]
         speed = res[0][3]
@@ -148,11 +189,9 @@ def get_sidereal_lon_from_jd(jd: float, planet_code: int):
     sid_lon = (lon - ayan) % 360
     return sid_lon, speed
 
+
 def get_zodiac_name(sid_lon: float) -> str:
     return ZODIACS[int(sid_lon // 30) % 12]
-
-# -------------------- continues --------------------
-
 
 
 def find_aspect_dates(
@@ -164,7 +203,8 @@ def find_aspect_dates(
     limit_past: int = 20,
     limit_future: int = 5,
 ) -> Tuple[List[str], List[str]]:
-    """ EXACT same logic as Tkinter version:
+    """
+    EXACT same logic as Tkinter version:
     - step 1 day
     - collect all days where z2 == aspect_map[z1]
     - then compress consecutive dates => only aspect START dates
@@ -174,15 +214,15 @@ def find_aspect_dates(
         today.year,
         today.month,
         today.day,
-        today.hour + today.minute / 60.0
+        today.hour + today.minute / 60.0,
     )
 
     p1 = PLANETS[planet1]
     p2 = PLANETS[planet2]
     aspect_map = ASPECTS[aspect_name]
 
-    results_past = []
-    results_future = []
+    results_past: List[str] = []
+    results_future: List[str] = []
 
     start_offset = -365 * years_back
     end_offset = 365 * years_forward
@@ -204,8 +244,8 @@ def find_aspect_dates(
             else:
                 results_future.append(date_str)
 
-    def unique_first_past(entries, keep):
-        out = []
+    def unique_first_past(entries: List[str], keep: int) -> List[str]:
+        out: List[str] = []
         prev = None
         for e in entries:
             if prev is None or (
@@ -216,8 +256,8 @@ def find_aspect_dates(
             prev = e
         return out[-keep:][::-1]
 
-    def unique_first_future(entries, keep):
-        out = []
+    def unique_first_future(entries: List[str], keep: int) -> List[str]:
+        out: List[str] = []
         prev = None
         for e in entries:
             if prev is None or (
@@ -234,8 +274,12 @@ def find_aspect_dates(
     )
 
 
+# ---------------------------------------------------------------------
+# DATA HELPERS
+# ---------------------------------------------------------------------
 def load_github_df(url: str) -> pd.DataFrame:
-    """ Robust parquet loader:
+    """
+    Robust parquet loader:
     - accepts any datetime column name: datetime / date / time / timestamp
     - if index already datetime, uses it
     - filters timeframe == 'D' if exists
@@ -244,7 +288,8 @@ def load_github_df(url: str) -> pd.DataFrame:
 
     # Find datetime-like column
     datetime_cols = [
-        c for c in df.columns
+        c
+        for c in df.columns
         if c.lower() in ("datetime", "date", "time", "timestamp")
     ]
 
@@ -268,9 +313,9 @@ def load_github_df(url: str) -> pd.DataFrame:
 def analyze_symbol_for_aspect_dates(
     df: pd.DataFrame,
     aspect_dates: List[str],
-    lookahead_days: int = 15   # <<< NEW
-):
-    results = []
+    lookahead_days: int = 15,
+) -> List[dict]:
+    results: List[dict] = []
 
     for ds in aspect_dates:
         try:
@@ -287,7 +332,7 @@ def analyze_symbol_for_aspect_dates(
 
         idx_pos = df.index.get_loc(idx)
         start_pos = idx_pos + 1
-        end_pos = start_pos + lookahead_days   # <<< CHANGED
+        end_pos = start_pos + lookahead_days
 
         window = df.iloc[start_pos:end_pos]
         if window.empty:
@@ -299,14 +344,16 @@ def analyze_symbol_for_aspect_dates(
         pct_max = ((max_next - close_on_date) / close_on_date) * 100
         pct_min = ((min_next - close_on_date) / close_on_date) * 100
 
-        results.append({
-            "aspect_date": ds,
-            "close": close_on_date,
-            "max_n": max_next,
-            "min_n": min_next,
-            "pct_max": pct_max,
-            "pct_min": pct_min,
-        })
+        results.append(
+            {
+                "aspect_date": ds,
+                "close": close_on_date,
+                "max_n": max_next,
+                "min_n": min_next,
+                "pct_max": pct_max,
+                "pct_min": pct_min,
+            }
+        )
 
     return results
 
@@ -390,13 +437,12 @@ with tabs[1]:
 
     if not aspect_dates:
         st.warning("No aspect dates available. Go to the Aspects tab and compute first.")
-
     else:
         st.caption(f"Using {len(aspect_dates)} past aspect start dates.")
 
         if st.button("🚀 Run Stock Scan"):
             files = requests.get(GITHUB_DIR_API).json()
-            results = []
+            results: List[dict] = []
 
             total_files = len([f for f in files if f["name"].endswith(".parquet")])
 
@@ -414,8 +460,11 @@ with tabs[1]:
                     except Exception:
                         continue
 
-                    items = analyze_symbol_for_aspect_dates(df, aspect_dates, lookahead_days=15)
-
+                    items = analyze_symbol_for_aspect_dates(
+                        df,
+                        aspect_dates,
+                        lookahead_days=15,
+                    )
 
                     for it in items:
                         if (it["pct_max"] >= 10.0) or (it["pct_min"] <= -10.0):
@@ -426,30 +475,27 @@ with tabs[1]:
                                 direction = "DOWN"
                             else:
                                 continue
-                            
-                            
 
-                            results.append({
-                                "symbol": sym,
-                                "aspect_date": it["aspect_date"],
-                                "close": it["close"],
-                                "pct_max": round(it["pct_max"], 2),
-                                "pct_min": round(it["pct_min"], 2),
-                                "direction": direction,
+                            results.append(
+                                {
+                                    "symbol": sym,
+                                    "aspect_date": it["aspect_date"],
+                                    "close": it["close"],
+                                    "pct_max": round(it["pct_max"], 2),
+                                    "pct_min": round(it["pct_min"], 2),
+                                    "direction": direction,
+                                }
+                            )
 
-                            })
                             df_res = pd.DataFrame(results)
                             st.session_state["scan_results"] = df_res
-
-
 
         st.markdown("### Scan Results")
 
         df_res = st.session_state["scan_results"]
         if not df_res.empty:
             summary = (
-                df_res
-                .groupby("symbol")
+                df_res.groupby("symbol")
                 .agg(
                     Checked_Events=("symbol", "count"),
                     Moves_Above_10pct=("direction", "count"),
@@ -461,37 +507,32 @@ with tabs[1]:
         else:
             summary = pd.DataFrame()
 
-
         if df_res.empty:
             st.info("No results yet. Run a scan to populate data.")
         else:
             min_hits = st.slider(
                 "Show stocks with at least N qualifying events",
-                1, 20, 1
+                1,
+                20,
+                1,
             )
             summary_filtered = summary[summary["Checked_Events"] >= min_hits]
 
             symbols_allowed = summary_filtered["symbol"].unique()
-
             df_filtered = df_res[df_res["symbol"].isin(symbols_allowed)]
-            
 
-            
             st.markdown("### 📌 Stock Performance Summary (Decision Table)")
             st.dataframe(summary, use_container_width=True)
 
             st.markdown("### 📋 Individual Aspect Events")
             st.dataframe(df_filtered, use_container_width=True)
 
-
-            st.dataframe(df_filtered, use_container_width=True)
-
             csv = df_filtered.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "📥 Download Filtered CSV",
                 csv,
-                f"aspect_scan_filtered.csv",
-                "text/csv"
+                "aspect_scan_filtered.csv",
+                "text/csv",
             )
 
             st.success(f"Stocks meeting criteria: {df_filtered['symbol'].nunique()}")
@@ -505,9 +546,7 @@ with tabs[2]:
     df_res = st.session_state["scan_results"]
 
     if df_res.empty:
-        st.info(
-            "No scan results found. Run a scan in the Stocks Scan tab first."
-        )
+        st.info("No scan results found. Run a scan in the Stocks Scan tab first.")
     else:
         symbols = sorted(df_res["symbol"].unique())
 
@@ -521,7 +560,7 @@ with tabs[2]:
         with col2:
             aspect_date = st.selectbox(
                 "Aspect Date",
-                df_sym["aspect_date"].unique()
+                df_sym["aspect_date"].unique(),
             )
 
         if st.button("📈 Show Chart"):
@@ -535,7 +574,6 @@ with tabs[2]:
 
             if url is None:
                 st.error(f"No parquet file found on GitHub for symbol: {symbol}")
-
             else:
                 try:
                     df = load_github_df(url)
@@ -553,12 +591,10 @@ with tabs[2]:
 
                     if dfw.empty:
                         st.warning("No OHLC data around this aspect date.")
-
                     else:
                         required_cols = {"open", "high", "low", "close"}
                         if not required_cols.issubset(dfw.columns):
                             st.error("Missing OHLC columns; cannot plot candles.")
-
                         else:
                             df_candle = dfw[
                                 ["open", "high", "low", "close"]
@@ -598,9 +634,11 @@ with tabs[2]:
 
                             st.pyplot(fig)
 
-
-
-st.markdown("""
+# ---------------------------------------------------------------------
+# FOOTER
+# ---------------------------------------------------------------------
+st.markdown(
+    """
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
 
 <div style="line-height: 1.6;">
@@ -619,4 +657,6 @@ Energy | Commodity | Quant Intelligence 📶<br><br>
 
 📧 <a href="mailto:yadav.gauravsingh@gmail.com">yadav.gauravsingh@gmail.com</a> ™️
 </div>
-""", unsafe_allow_html=True)
+""",
+    unsafe_allow_html=True,
+)
