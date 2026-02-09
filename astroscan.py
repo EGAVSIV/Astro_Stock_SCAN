@@ -268,7 +268,7 @@ def load_github_df(url: str) -> pd.DataFrame:
 def analyze_symbol_for_aspect_dates(
     df: pd.DataFrame,
     aspect_dates: List[str],
-    lookahead_days: int = 5   # <<< NEW
+    lookahead_days: int = 15   # <<< NEW
 ):
     results = []
 
@@ -414,7 +414,7 @@ with tabs[1]:
                     except Exception:
                         continue
 
-                    items = analyze_symbol_for_aspect_dates(df, aspect_dates, lookahead_days=5)
+                    items = analyze_symbol_for_aspect_dates(df, aspect_dates, lookahead_days=15)
 
 
                     for it in items:
