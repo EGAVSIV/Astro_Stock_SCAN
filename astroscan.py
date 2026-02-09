@@ -40,14 +40,6 @@ def hash_pwd(pwd):
 # ---------------- USERS ----------------
 USERS = st.secrets["users"]
 
-# 🔐 Users allowed to select ANY future date
-FUTURE_ALLOWED_USERS = {
-    "admin",
-    "gaurav",
-    "premium",
-    "EGAVSIV",
-    "DIPTI"
-}
 
 # ---------------- SESSION INIT ----------------
 if "authenticated" not in st.session_state:
