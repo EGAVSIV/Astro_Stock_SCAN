@@ -11,6 +11,8 @@ import matplotlib
 from matplotlib.figure import Figure
 import mplfinance as mpf
 import base64
+import hashlib
+
 
 def set_bg_image(image_path: str):
     with open(image_path, "rb") as f:
