@@ -146,7 +146,7 @@ PLANETS = {
     "Mars": swe.MARS,
     "Jupiter": swe.JUPITER,
     "Saturn": swe.SATURN,
-    "Rahu": swe.TRUE_NODE,
+    "Rahu": swe.MEAN_NODE,
 }
 
 ASPECTS = {
@@ -238,7 +238,10 @@ def get_sidereal_lon_from_jd(jd: float, planet_code: int) -> Tuple[float, float]
 
 def get_zodiac_name(sid_lon: float) -> str:
     return ZODIACS[int(sid_lon // 30) % 12]
-
+    
+def angular_diff(a: float, b: float) -> float:
+    d = abs(a - b) % 360
+    return min(d, 360 - d)
 
 def find_aspect_dates(
     planet1: str,
@@ -248,13 +251,9 @@ def find_aspect_dates(
     years_forward: int = 5,
     limit_past: int = 20,
     limit_future: int = 5,
+    orb: float = 1.0,
 ) -> Tuple[List[str], List[str]]:
-    """
-    EXACT same logic as Tkinter version:
-    - step 1 day
-    - collect all days where z2 == aspect_map[z1]
-    - then compress consecutive dates => only aspect START dates
-    """
+
     today = datetime.datetime.now()
     jd_today = swe.julday(
         today.year,
@@ -265,7 +264,6 @@ def find_aspect_dates(
 
     p1 = PLANETS[planet1]
     p2 = PLANETS[planet2]
-    aspect_map = ASPECTS[aspect_name]
 
     results_past: List[str] = []
     results_future: List[str] = []
@@ -273,38 +271,48 @@ def find_aspect_dates(
     start_offset = -365 * years_back
     end_offset = 365 * years_forward
 
+    prev_diff = None
+
     for offset in range(start_offset, end_offset + 1):
+
         jd = jd_today + offset
 
         lon1, _ = get_sidereal_lon_from_jd(jd, p1)
         lon2, _ = get_sidereal_lon_from_jd(jd, p2)
 
-        z1 = get_zodiac_name(lon1)
-        z2 = get_zodiac_name(lon2)
+        diff = angular_diff(lon1, lon2)
 
-        if aspect_map.get(z1) == z2:
+        match = False
+
+        if aspect_name == "Conjunction":
+            match = diff <= orb
+
+        elif aspect_name == "Opposition":
+            match = abs(diff - 180) <= orb
+
+        elif aspect_name == "Square":
+            match = abs(diff - 90) <= orb
+
+        elif aspect_name == "Trine":
+            match = abs(diff - 120) <= orb
+
+        elif aspect_name == "Sextile":
+            match = abs(diff - 60) <= orb
+
+        if match:
             y, m, d, hr = swe.revjul(jd)
             date_str = f"{d:02d}-{m:02d}-{y}"
+
             if offset < 0:
                 results_past.append(date_str)
             else:
                 results_future.append(date_str)
 
-    def unique_first_past(entries: List[str], keep: int) -> List[str]:
+    # Remove consecutive duplicates (aspect windows → keep start only)
+    def compress(entries: List[str], keep: int, reverse=False):
         out: List[str] = []
         prev = None
-        for e in entries:
-            if prev is None or (
-                datetime.datetime.strptime(e, "%d-%m-%Y")
-                - datetime.datetime.strptime(prev, "%d-%m-%Y")
-            ).days != 1:
-                out.append(e)
-            prev = e
-        return out[-keep:][::-1]
 
-    def unique_first_future(entries: List[str], keep: int) -> List[str]:
-        out: List[str] = []
-        prev = None
         for e in entries:
             if prev is None or (
                 datetime.datetime.strptime(e, "%d-%m-%Y")
@@ -312,12 +320,17 @@ def find_aspect_dates(
             ).days != 1:
                 out.append(e)
             prev = e
+
+        if reverse:
+            return out[-keep:][::-1]
         return out[:keep]
 
     return (
-        unique_first_past(results_past, limit_past),
-        unique_first_future(results_future, limit_future),
+        compress(results_past, limit_past, reverse=True),
+        compress(results_future, limit_future, reverse=False),
     )
+
+
 
 
 # ---------------------------------------------------------------------
