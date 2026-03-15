@@ -291,7 +291,8 @@ if "dates" in st.session_state:
                     })
 
         df_res = pd.DataFrame(results)
-
-        st.dataframe(df_res)
-
-        st.success(f"{df_res['symbol'].nunique()} Stocks Found")
+        if df_res.empty:
+            st.warning("No Stocks Found Matching Criteria")
+        else:
+            st.dataframe(df_res)
+            st.success(f"{df_res['symbol'].nunique()} Stocks Found")
