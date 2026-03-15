@@ -79,12 +79,14 @@ def get_sidereal_lon(jd, planet):
 
     res = swe.calc_ut(jd, planet)
 
-    lon = res[0]
+    try:
+        lon = res[0][0]
+    except:
+        lon = res[0]
+
     ayan = swe.get_ayanamsa_ut(jd)
 
-    sid_lon = (lon - ayan) % 360
-
-    return sid_lon
+    return (lon - ayan) % 360
 
 
 def get_nakshatra(lon):
