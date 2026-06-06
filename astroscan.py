@@ -147,6 +147,7 @@ PLANETS = {
     "Jupiter": swe.JUPITER,
     "Saturn": swe.SATURN,
     "Rahu": swe.MEAN_NODE,
+    "Ketu": "KETU"
 }
 
 ASPECTS = {
@@ -217,27 +218,116 @@ GITHUB_DIR_API = (
 # ---------------------------------------------------------------------
 # ASTRO HELPERS
 # ---------------------------------------------------------------------
-def get_sidereal_lon_from_jd(jd: float, planet_code: int) -> Tuple[float, float]:
-    """Return sidereal longitude + speed (Lahiri)."""
+def get_sidereal_lon_from_jd(jd, planet_code):
+
+    if planet_code == "KETU":
+
+        rahu_res = swe.calc_ut(jd, swe.MEAN_NODE)
+
+        if isinstance(rahu_res[0], (list, tuple)):
+            rahu_lon = rahu_res[0][0]
+            rahu_speed = rahu_res[0][3]
+        else:
+            rahu_lon = rahu_res[0]
+            rahu_speed = rahu_res[3]
+
+        ayan = swe.get_ayanamsa_ut(jd)
+
+        rahu_sid = (rahu_lon - ayan) % 360
+
+        ketu_sid = (rahu_sid + 180) % 360
+
+        return ketu_sid, rahu_speed
+
     res = swe.calc_ut(jd, planet_code)
 
-    if isinstance(res, tuple) and isinstance(res[0], (list, tuple)):
+    if isinstance(res[0], (list, tuple)):
         lon = res[0][0]
         speed = res[0][3]
-    elif isinstance(res, (list, tuple)):
-        lon = res[0]
-        speed = res[3] if len(res) > 3 else 0.0
     else:
-        lon = float(res[0])
-        speed = float(res[3]) if len(res) > 3 else 0.0
+        lon = res[0]
+        speed = res[3]
 
     ayan = swe.get_ayanamsa_ut(jd)
+
     sid_lon = (lon - ayan) % 360
+
     return sid_lon, speed
 
 
 def get_zodiac_name(sid_lon: float) -> str:
     return ZODIACS[int(sid_lon // 30) % 12]
+
+def zodiac_aspect_match(
+    z1,
+    z2,
+    aspect_name
+):
+
+    target = ASPECTS[aspect_name].get(z1)
+
+    return z2 == target
+
+def find_zodiac_aspect_events(
+    planet1,
+    planet2,
+    aspect_name,
+    years_back=10,
+    years_forward=5
+):
+
+    events = []
+
+    today = datetime.datetime.now()
+
+    jd_today = swe.julday(
+        today.year,
+        today.month,
+        today.day,
+        today.hour + today.minute/60
+    )
+
+    p1 = PLANETS[planet1]
+    p2 = PLANETS[planet2]
+
+    prev_state = False
+    start_jd = None
+
+    start_hours = -years_back * 365 * 24
+    end_hours = years_forward * 365 * 24
+
+    for h in range(start_hours, end_hours, 1):
+
+        jd = jd_today + h / 24
+
+        lon1, _ = get_sidereal_lon_from_jd(jd, p1)
+        lon2, _ = get_sidereal_lon_from_jd(jd, p2)
+
+        z1 = get_zodiac_name(lon1)
+        z2 = get_zodiac_name(lon2)
+
+        current_state = zodiac_aspect_match(
+            z1,
+            z2,
+            aspect_name
+        )
+
+        if not prev_state and current_state:
+
+            start_jd = jd
+
+            events.append({
+                "StartJD": jd,
+                "Planet1": planet1,
+                "Planet2": planet2,
+                "Zodiac1": z1,
+                "Zodiac2": z2,
+                "Aspect": aspect_name
+            })
+
+        prev_state = current_state
+
+    return events
     
 def angular_diff(a: float, b: float) -> float:
     d = abs(a - b) % 360
@@ -426,6 +516,9 @@ if "aspect_dates_past" not in st.session_state:
 if "aspect_dates_future" not in st.session_state:
     st.session_state["aspect_dates_future"] = []
 
+if "aspect_events" not in st.session_state:
+    st.session_state["aspect_events"] = []
+
 if "scan_results" not in st.session_state:
     st.session_state["scan_results"] = pd.DataFrame()
 
@@ -440,7 +533,21 @@ tabs = st.tabs(["🌙x☀️Aspects", "📊 Stocks Scan", "📉 Charts"])
 # TAB 1 — ASPECTS
 # ---------------------------------------------------------------------
 with tabs[0]:
-    st.subheader("Find Aspect Start Dates (Tkinter Logic)")
+
+    st.subheader(
+        "Find Aspect Start Dates"
+    )
+
+    aspect_mode = st.radio(
+        "Aspect Calculation Mode",
+        [
+            "Zodiac Sign",
+            "Degree Based"
+        ],
+        horizontal=True
+    )
+
+    
 
     col1, col2, col3, col4 = st.columns(4)
 
@@ -455,36 +562,67 @@ with tabs[0]:
         years_forward = st.number_input("Years forward", 1, 50, 5)
 
     if st.button("🔍 Find Aspect Dates"):
-        with st.spinner("Computing aspect start dates..."):
-            past, future = find_aspect_dates(
-                planet1,
-                planet2,
-                aspect_name,
-                years_back=int(years_back),
-                years_forward=int(years_forward),
-            )
-        st.session_state["aspect_dates_past"] = past
-        st.session_state["aspect_dates_future"] = future
 
-        st.success(
-            f"Found {len(past)} past aspect starts and {len(future)} future aspect starts."
+        events = find_zodiac_aspect_events(
+            planet1,
+            planet2,
+            aspect_name,
+            int(years_back),
+            int(years_forward)
         )
 
-    colA, colB = st.columns(2)
+        st.session_state["aspect_events"] = events
+        events = st.session_state["aspect_events"]
 
-    with colA:
-        st.markdown("### Past Aspect Start Dates (most recent first)")
-        if st.session_state["aspect_dates_past"]:
-            st.write(st.session_state["aspect_dates_past"])
-        else:
-            st.info("No past aspect dates computed yet.")
+if len(events) > 0:
 
-    with colB:
-        st.markdown("### Future Aspect Start Dates")
-        if st.session_state["aspect_dates_future"]:
-            st.write(st.session_state["aspect_dates_future"])
-        else:
-            st.info("No future aspect dates computed yet.")
+    rows = []
+
+    for e in events:
+
+        y,m,d,hr = swe.revjul(e["StartJD"])
+
+        hour = int(hr)
+        minute = int((hr - hour) * 60)
+
+        rows.append({
+
+            "Date":
+                f"{d:02d}-{m:02d}-{y}",
+
+            "Time":
+                f"{hour:02d}:{minute:02d}",
+
+            "Planet 1":
+                e["Planet1"],
+
+            "Zodiac 1":
+                e["Zodiac1"],
+
+            "Planet 2":
+                e["Planet2"],
+
+            "Zodiac 2":
+                e["Zodiac2"],
+
+            "Aspect":
+                e["Aspect"]
+        })
+
+    df_events = pd.DataFrame(rows)
+
+    st.dataframe(
+        df_events,
+        use_container_width=True
+    )
+
+else:
+
+    st.info(
+        "No aspect events found."
+    )
+
+
 
 # ---------------------------------------------------------------------
 # TAB 2 — STOCKS SCAN
