@@ -574,6 +574,8 @@ with tabs[0]:
         st.session_state["aspect_events"] = events
         events = st.session_state["aspect_events"]
 
+events = st.session_state["aspect_events"]
+
 if len(events) > 0:
 
     rows = []
@@ -630,7 +632,17 @@ else:
 with tabs[1]:
     st.subheader("Scan Stocks Around Aspect Start Dates")
 
-    aspect_dates = st.session_state["aspect_dates_past"]
+    events = st.session_state["aspect_events"]
+
+    aspect_dates = []
+
+    for e in events:
+
+        y,m,d,hr = swe.revjul(e["StartJD"])
+
+        aspect_dates.append(
+            f"{d:02d}-{m:02d}-{y}"
+        )
 
     if not aspect_dates:
         st.warning("No aspect dates available. Go to the Aspects tab and compute first.")
