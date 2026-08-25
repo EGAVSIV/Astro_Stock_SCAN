@@ -210,9 +210,9 @@ ASPECTS = {
     },
 }
 
-# GitHub data folder
+# GitHub data folder - UPDATED PATH
 GITHUB_DIR_API = (
-    "https://api.github.com/repos/EGAVSIV/Stock_Scanner_With_ASTA_Parameters/contents/stock_data_D"
+    "https://api.github.com/repos/EGAVSIV/Data-Collector/tree/main/stockdata_D"
 )
 
 # ---------------------------------------------------------------------
@@ -424,16 +424,16 @@ def find_aspect_dates(
 
 
 # ---------------------------------------------------------------------
-# DATA HELPERS
+# DATA HELPERS (UPDATED FOR JSON)
 # ---------------------------------------------------------------------
 def load_github_df(url: str) -> pd.DataFrame:
     """
-    Robust parquet loader:
+    Robust JSON loader:
     - accepts any datetime column name: datetime / date / time / timestamp
     - if index already datetime, uses it
     - filters timeframe == 'D' if exists
     """
-    df = pd.read_parquet(url, engine="pyarrow")
+    df = pd.read_json(url)
 
     # Find datetime-like column
     datetime_cols = [
@@ -627,7 +627,7 @@ else:
 
 
 # ---------------------------------------------------------------------
-# TAB 2 — STOCKS SCAN
+# TAB 2 — STOCKS SCAN (UPDATED FOR JSON)
 # ---------------------------------------------------------------------
 with tabs[1]:
     st.subheader("Scan Stocks Around Aspect Start Dates")
@@ -653,15 +653,15 @@ with tabs[1]:
             files = requests.get(GITHUB_DIR_API).json()
             results: List[dict] = []
 
-            total_files = len([f for f in files if f["name"].endswith(".parquet")])
+            total_files = len([f for f in files if f["name"].endswith(".json")])
 
-            with st.spinner("Scanning stocks from GitHub parquet files..."):
+            with st.spinner("Scanning stocks from GitHub json files..."):
                 for f in files:
                     name = f.get("name", "")
-                    if not name.endswith(".parquet"):
+                    if not name.endswith(".json"):
                         continue
 
-                    sym = name.replace(".parquet", "")
+                    sym = name.replace(".json", "")
                     url = f["download_url"]
 
                     try:
@@ -747,7 +747,7 @@ with tabs[1]:
             st.success(f"Stocks meeting criteria: {df_filtered['symbol'].nunique()}")
 
 # ---------------------------------------------------------------------
-# TAB 3 — CHARTS
+# TAB 3 — CHARTS (UPDATED FOR JSON)
 # ---------------------------------------------------------------------
 with tabs[2]:
     st.subheader("Candlestick Chart Around Aspect Date")
@@ -777,12 +777,12 @@ with tabs[2]:
             url = None
 
             for f in files:
-                if f.get("name", "") == f"{symbol}.parquet":
+                if f.get("name", "") == f"{symbol}.json":
                     url = f["download_url"]
                     break
 
             if url is None:
-                st.error(f"No parquet file found on GitHub for symbol: {symbol}")
+                st.error(f"No json file found on GitHub for symbol: {symbol}")
             else:
                 try:
                     df = load_github_df(url)
