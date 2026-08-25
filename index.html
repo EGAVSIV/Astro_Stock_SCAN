@@ -3,156 +3,61 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Planetary Aspects & Stock Scanner</title>
+    <title>AstroScan Dashboard</title>
     <link rel="stylesheet" href="style.css">
-    <!-- FontAwesome for Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <!-- Chart.js for Interactive Charts -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <!-- Astronomy Engine JS library for ephemeris calculations -->
-    <script src="https://cdn.jsdelivr.net/npm/astronomy-engine@2.1.19/astronomy.min.js"></script>
 </head>
 <body>
     <div class="app-container">
-        <!-- Sidebar Navigation -->
-        <aside class="sidebar">
-            <div class="brand">
-                <i class="fa-solid fa-planet"></i>
-                <h2>AstroScan</h2>
-            </div>
-            <nav class="nav-menu">
-                <button class="nav-btn active" onclick="switchTab('aspects')">
-                    <i class="fa-solid fa-moon"></i> Aspects Engine
-                </button>
-                <button class="nav-btn" onclick="switchTab('scanner')">
-                    <i class="fa-solid fa-chart-line"></i> Stocks Scan
-                </button>
-                <button class="nav-btn" onclick="switchTab('charts')">
-                    <i class="fa-solid fa-chart-candlestick"></i> Charts
-                </button>
-            </nav>
-            <div class="sidebar-footer">
-                <p>Designed by:<br><strong>Gaurav Singh Yadav</strong></p>
-                <p><i class="fa-brands fa-whatsapp"></i> +91-80039945180</p>
-            </div>
-        </aside>
-
-        <!-- Main Dashboard View -->
         <main class="content">
             <header class="topbar">
-                <h1>🪐 Planetary Aspects Vs Stock Scanner</h1>
+                <h1>🪐 Planetary Aspects & Stock Scanner</h1>
+                <!-- WORKFLOW BUTTON -->
+                <button id="updateDataBtn" class="btn btn-primary" onclick="triggerWorkflow()">
+                    <i class="fa-solid fa-sync"></i> Update Data
+                </button>
             </header>
 
-            <!-- TAB 1: ASPECTS ENGINE -->
-            <section id="tab-aspects" class="tab-content active">
-                <div class="card">
-                    <h3>Find Aspect Start Dates</h3>
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label>Planet 1</label>
-                            <select id="planet1">
-                                <option value="Sun">Sun</option>
-                                <option value="Moon">Moon</option>
-                                <option value="Mercury">Mercury</option>
-                                <option value="Venus">Venus</option>
-                                <option value="Mars">Mars</option>
-                                <option value="Jupiter" selected>Jupiter</option>
-                                <option value="Saturn">Saturn</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Planet 2</label>
-                            <select id="planet2">
-                                <option value="Sun">Sun</option>
-                                <option value="Moon">Moon</option>
-                                <option value="Mercury">Mercury</option>
-                                <option value="Venus">Venus</option>
-                                <option value="Mars">Mars</option>
-                                <option value="Jupiter">Jupiter</option>
-                                <option value="Saturn" selected>Saturn</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Aspect</label>
-                            <select id="aspectType">
-                                <option value="Conjunction">Conjunction (0°)</option>
-                                <option value="Opposition">Opposition (180°)</option>
-                                <option value="Square">Square (90°)</option>
-                                <option value="Trine">Trine (120°)</option>
-                                <option value="Sextile">Sextile (60°)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Years Back / Forward</label>
-                            <input type="number" id="yearsBack" value="2" min="1" max="10">
-                        </div>
-                    </div>
-                    <button class="btn btn-primary" onclick="calculateAspects()">
-                        <i class="fa-solid fa-magnifying-glass"></i> Find Aspect Dates
-                    </button>
-                </div>
+            <div id="statusAlert" class="alert-box" style="display: none;"></div>
 
-                <div class="card margin-top">
-                    <h3>Aspect Events Output</h3>
-                    <div class="table-wrapper">
-                        <table id="aspectsTable">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Planet 1</th>
-                                    <th>Zodiac 1</th>
-                                    <th>Planet 2</th>
-                                    <th>Zodiac 2</th>
-                                    <th>Aspect</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td colspan="6" class="text-center">No calculations performed yet.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
+            <section class="card margin-top">
+                <h3>Aspect Events</h3>
+                <div class="table-wrapper">
+                    <table id="aspectsTable">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Time</th>
+                                <th>Planet 1</th>
+                                <th>Planet 2</th>
+                                <th>Aspect</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="5" class="text-center">Loading data...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
 
-            <!-- TAB 2: STOCKS SCANNER -->
-            <section id="tab-scanner" class="tab-content">
-                <div class="card">
-                    <h3>Scan Market Data</h3>
-                    <p id="aspectStatusInfo">Compute aspect dates first to enable scanner.</p>
-                    <button class="btn btn-accent" id="runScanBtn" onclick="runStockScan()" disabled>
-                        <i class="fa-solid fa-rocket"></i> Run Stock Scan
-                    </button>
-                </div>
-
-                <div class="card margin-top">
-                    <h3>Scan Results Summary</h3>
-                    <div class="table-wrapper">
-                        <table id="scanResultsTable">
-                            <thead>
-                                <tr>
-                                    <th>Symbol</th>
-                                    <th>Aspect Date</th>
-                                    <th>Base Price</th>
-                                    <th>Max Return (%)</th>
-                                    <th>Min Return (%)</th>
-                                    <th>Direction</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td colspan="6" class="text-center">No scan results available.</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
-
-            <!-- TAB 3: CHARTS -->
-            <section id="tab-charts" class="tab-content">
-                <div class="card">
-                    <h3>Aspect Impact Visualizer</h3>
-                    <div class="chart-container">
-                        <canvas id="aspectChart"></canvas>
-                    </div>
+            <section class="card margin-top">
+                <h3>Scan Results</h3>
+                <div class="table-wrapper">
+                    <table id="scanResultsTable">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Aspect Date</th>
+                                <th>Close Price</th>
+                                <th>Max %</th>
+                                <th>Min %</th>
+                                <th>Direction</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="6" class="text-center">Loading data...</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </section>
         </main>
