@@ -34,7 +34,6 @@ def set_bg_image(image_path: str):
     )
 
 
-
 def hash_pwd(pwd):
     return hashlib.sha256(pwd.encode()).hexdigest()
 
@@ -210,7 +209,6 @@ ASPECTS = {
     },
 }
 
-# GitHub data folder - UPDATED PATH
 GITHUB_DIR_API = (
     "https://api.github.com/repos/EGAVSIV/Data-Collector/tree/main/stockdata_D"
 )
@@ -398,7 +396,6 @@ def find_aspect_dates(
             else:
                 results_future.append(date_str)
 
-    # Remove consecutive duplicates (aspect windows → keep start only)
     def compress(entries: List[str], keep: int, reverse=False):
         out: List[str] = []
         prev = None
@@ -421,21 +418,12 @@ def find_aspect_dates(
     )
 
 
-
-
 # ---------------------------------------------------------------------
-# DATA HELPERS (UPDATED FOR JSON)
+# DATA HELPERS
 # ---------------------------------------------------------------------
 def load_github_df(url: str) -> pd.DataFrame:
-    """
-    Robust JSON loader:
-    - accepts any datetime column name: datetime / date / time / timestamp
-    - if index already datetime, uses it
-    - filters timeframe == 'D' if exists
-    """
     df = pd.read_json(url)
 
-    # Find datetime-like column
     datetime_cols = [
         c
         for c in df.columns
@@ -547,8 +535,6 @@ with tabs[0]:
         horizontal=True
     )
 
-    
-
     col1, col2, col3, col4 = st.columns(4)
 
     with col1:
@@ -572,7 +558,6 @@ with tabs[0]:
         )
 
         st.session_state["aspect_events"] = events
-        events = st.session_state["aspect_events"]
 
 events = st.session_state["aspect_events"]
 
@@ -625,9 +610,8 @@ else:
     )
 
 
-
 # ---------------------------------------------------------------------
-# TAB 2 — STOCKS SCAN (UPDATED FOR JSON)
+# TAB 2 — STOCKS SCAN
 # ---------------------------------------------------------------------
 with tabs[1]:
     st.subheader("Scan Stocks Around Aspect Start Dates")
@@ -637,9 +621,7 @@ with tabs[1]:
     aspect_dates = []
 
     for e in events:
-
         y,m,d,hr = swe.revjul(e["StartJD"])
-
         aspect_dates.append(
             f"{d:02d}-{m:02d}-{y}"
         )
@@ -650,54 +632,53 @@ with tabs[1]:
         st.caption(f"Using {len(aspect_dates)} past aspect start dates.")
 
         if st.button("🚀 Run Stock Scan"):
-            files = requests.get(GITHUB_DIR_API).json()
-            results: List[dict] = []
+            headers = {"Authorization": f"token {st.secrets['GITHUB_TOKEN']}"} if "GITHUB_TOKEN" in st.secrets else {}
+            resp = requests.get(GITHUB_DIR_API, headers=headers)
 
-            total_files = len([f for f in files if f["name"].endswith(".json")])
+            if resp.status_code != 200:
+                st.error(f"Failed to fetch data from GitHub API (Status Code: {resp.status_code}). If you hit rate limits, add GITHUB_TOKEN to secrets.")
+            else:
+                files = resp.json()
+                
+                if not isinstance(files, list):
+                    st.error(f"GitHub API Error: {files.get('message', 'Unexpected response format')}")
+                else:
+                    results: List[dict] = []
+                    json_files = [f for f in files if isinstance(f, dict) and f.get("name", "").endswith(".json")]
 
-            with st.spinner("Scanning stocks from GitHub json files..."):
-                for f in files:
-                    name = f.get("name", "")
-                    if not name.endswith(".json"):
-                        continue
+                    with st.spinner("Scanning stocks from GitHub json files..."):
+                        for f in json_files:
+                            sym = f["name"].replace(".json", "")
+                            url = f["download_url"]
 
-                    sym = name.replace(".json", "")
-                    url = f["download_url"]
-
-                    try:
-                        df = load_github_df(url)
-                    except Exception:
-                        continue
-
-                    items = analyze_symbol_for_aspect_dates(
-                        df,
-                        aspect_dates,
-                        lookahead_days=15,
-                    )
-
-                    for it in items:
-                        if (it["pct_max"] >= 10.0) or (it["pct_min"] <= -10.0):
-                            aspect_type = f"{planet1} {aspect_name} {planet2}"
-                            if it["pct_max"] >= 10:
-                                direction = "UP"
-                            elif it["pct_min"] <= -10:
-                                direction = "DOWN"
-                            else:
+                            try:
+                                df = load_github_df(url)
+                            except Exception:
                                 continue
 
-                            results.append(
-                                {
-                                    "symbol": sym,
-                                    "aspect_date": it["aspect_date"],
-                                    "close": it["close"],
-                                    "pct_max": round(it["pct_max"], 2),
-                                    "pct_min": round(it["pct_min"], 2),
-                                    "direction": direction,
-                                }
+                            items = analyze_symbol_for_aspect_dates(
+                                df,
+                                aspect_dates,
+                                lookahead_days=15,
                             )
 
-                            df_res = pd.DataFrame(results)
-                            st.session_state["scan_results"] = df_res
+                            for it in items:
+                                if (it["pct_max"] >= 10.0) or (it["pct_min"] <= -10.0):
+                                    direction = "UP" if it["pct_max"] >= 10 else "DOWN"
+
+                                    results.append(
+                                        {
+                                            "symbol": sym,
+                                            "aspect_date": it["aspect_date"],
+                                            "close": it["close"],
+                                            "pct_max": round(it["pct_max"], 2),
+                                            "pct_min": round(it["pct_min"], 2),
+                                            "direction": direction,
+                                        }
+                                    )
+
+                    df_res = pd.DataFrame(results)
+                    st.session_state["scan_results"] = df_res
 
         st.markdown("### Scan Results")
 
@@ -747,7 +728,7 @@ with tabs[1]:
             st.success(f"Stocks meeting criteria: {df_filtered['symbol'].nunique()}")
 
 # ---------------------------------------------------------------------
-# TAB 3 — CHARTS (UPDATED FOR JSON)
+# TAB 3 — CHARTS
 # ---------------------------------------------------------------------
 with tabs[2]:
     st.subheader("Candlestick Chart Around Aspect Date")
@@ -773,75 +754,81 @@ with tabs[2]:
             )
 
         if st.button("📈 Show Chart"):
-            files = requests.get(GITHUB_DIR_API).json()
-            url = None
-
-            for f in files:
-                if f.get("name", "") == f"{symbol}.json":
-                    url = f["download_url"]
-                    break
-
-            if url is None:
-                st.error(f"No json file found on GitHub for symbol: {symbol}")
+            headers = {"Authorization": f"token {st.secrets['GITHUB_TOKEN']}"} if "GITHUB_TOKEN" in st.secrets else {}
+            resp = requests.get(GITHUB_DIR_API, headers=headers)
+            
+            if resp.status_code != 200 or not isinstance(resp.json(), list):
+                st.error("Unable to retrieve file index from GitHub API.")
             else:
-                try:
-                    df = load_github_df(url)
-                except Exception as e:
-                    st.error(f"Error loading data for {symbol}: {e}")
+                files = resp.json()
+                url = None
+
+                for f in files:
+                    if isinstance(f, dict) and f.get("name", "") == f"{symbol}.json":
+                        url = f["download_url"]
+                        break
+
+                if url is None:
+                    st.error(f"No json file found on GitHub for symbol: {symbol}")
                 else:
-                    d = datetime.datetime.strptime(aspect_date, "%d-%m-%Y").date()
-                    start = d - datetime.timedelta(days=30)
-                    end = d + datetime.timedelta(days=40)
-
-                    dfw = df[
-                        (df.index.date >= start)
-                        & (df.index.date <= end)
-                    ]
-
-                    if dfw.empty:
-                        st.warning("No OHLC data around this aspect date.")
+                    try:
+                        df = load_github_df(url)
+                    except Exception as e:
+                        st.error(f"Error loading data for {symbol}: {e}")
                     else:
-                        required_cols = {"open", "high", "low", "close"}
-                        if not required_cols.issubset(dfw.columns):
-                            st.error("Missing OHLC columns; cannot plot candles.")
+                        d = datetime.datetime.strptime(aspect_date, "%d-%m-%Y").date()
+                        start = d - datetime.timedelta(days=30)
+                        end = d + datetime.timedelta(days=40)
+
+                        dfw = df[
+                            (df.index.date >= start)
+                            & (df.index.date <= end)
+                        ]
+
+                        if dfw.empty:
+                            st.warning("No OHLC data around this aspect date.")
                         else:
-                            df_candle = dfw[
-                                ["open", "high", "low", "close"]
-                            ].copy()
+                            required_cols = {"open", "high", "low", "close"}
+                            if not required_cols.issubset(dfw.columns):
+                                st.error("Missing OHLC columns; cannot plot candles.")
+                            else:
+                                df_candle = dfw[
+                                    ["open", "high", "low", "close"]
+                                ].copy()
 
-                            fig = Figure(figsize=(10, 4))
-                            ax = fig.add_subplot(111)
+                                fig = Figure(figsize=(10, 4))
+                                ax = fig.add_subplot(111)
 
-                            mpf.plot(
-                                df_candle,
-                                type="candle",
-                                ax=ax,
-                                style="charles",
-                                show_nontrading=True,
-                            )
+                                mpf.plot(
+                                    df_candle,
+                                    type="candle",
+                                    ax=ax,
+                                    style="charles",
+                                    show_nontrading=True,
+                                )
 
-                            ax.set_title(
-                                f"{symbol} — Candlestick Chart (around {aspect_date})"
-                            )
-                            ax.grid(True, alpha=0.3)
+                                ax.set_title(
+                                    f"{symbol} — Candlestick Chart (around {aspect_date})"
+                                )
+                                ax.grid(True, alpha=0.3)
 
-                            try:
-                                dates = pd.Series(dfw.index)
-                                idx_near = dates[dates.dt.date == d]
-                                if not idx_near.empty:
-                                    ad_idx = idx_near.iloc[0]
-                                    y = dfw.loc[ad_idx, "close"]
-                                    ax.axvline(
-                                        ad_idx,
-                                        color="orange",
-                                        linestyle="--",
-                                        linewidth=1,
-                                    )
-                                    ax.scatter([ad_idx], [y], color="orange")
-                            except Exception:
-                                pass
+                                try:
+                                    dates = pd.Series(dfw.index)
+                                    idx_near = dates[dates.dt.date == d]
+                                    if not idx_near.empty:
+                                        ad_idx = idx_near.iloc[0]
+                                        y = dfw.loc[ad_idx, "close"]
+                                        ax.axvline(
+                                            ad_idx,
+                                            color="orange",
+                                            linestyle="--",
+                                            linewidth=1,
+                                        )
+                                        ax.scatter([ad_idx], [y], color="orange")
+                                except Exception:
+                                    pass
 
-                            st.pyplot(fig)
+                                st.pyplot(fig)
 
 # ---------------------------------------------------------------------
 # FOOTER
