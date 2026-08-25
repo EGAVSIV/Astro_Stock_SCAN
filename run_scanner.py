@@ -107,15 +107,12 @@ def analyze_symbol(df, aspect_dates, lookahead_days=15):
         })
     return results
 
-# ---------------------------------------------------------------------
-# MAIN EXECUTION & JSON SAVING
-# ---------------------------------------------------------------------
-if __name__ == "__main__":
+def run_pipeline():
     print("Computing Aspect Events...")
     aspect_events = find_zodiac_aspect_events("Jupiter", "Saturn", "Trine", years_back=5, years_forward=2)
     aspect_dates = [e["date"] for e in aspect_events]
 
-    print(f"Scanning stock data from GitHub across {len(aspect_dates)} aspect dates...")
+    print(f"Scanning stock data across {len(aspect_dates)} aspect dates...")
     files = requests.get(GITHUB_DIR_API).json()
     scan_results = []
 
@@ -140,7 +137,7 @@ if __name__ == "__main__":
                         "pct_min": it["pct_min"],
                         "direction": "UP" if it["pct_max"] >= 10 else "DOWN"
                     })
-        except Exception as e:
+        except Exception:
             continue
 
     output_payload = {
@@ -152,4 +149,7 @@ if __name__ == "__main__":
     with open("scan_results.json", "w") as out_file:
         json.dump(output_payload, out_file, indent=4)
 
-    print("Success! Saved results locally to scan_results.json.")
+    print("Success! Updated scan_results.json.")
+
+if __name__ == "__main__":
+    run_pipeline()
